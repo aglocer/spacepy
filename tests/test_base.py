@@ -10,6 +10,7 @@ Copyright 2012 Los Alamos National Security, LLC.
 import unittest
 import warnings
 
+import spacepy_testing
 import spacepy
 
 
@@ -29,22 +30,16 @@ class SpacepyFuncTests(unittest.TestCase):
         self.assertEqual(
             "\n"
             "            test function\n"
-            "            \n"
+            "\n"
             "            .. deprecated:: 0.1\n"
             "               pithy message\n"
-            "            \n"
             "\n"
             "            this will test things\n"
-            "            \n",
+            "            ",
             testfunc.__doc__)
-        with warnings.catch_warnings(record=True) as w:
-            #make sure to catch expected warnings
-            warnings.filterwarnings('always', 'pithy message',
-                                    DeprecationWarning, '^spacepy')
+        with spacepy_testing.assertWarns(self, 'always', r'pithy message$',
+                                         DeprecationWarning, r'spacepy$'):
             self.assertEqual(2, testfunc(1))
-        self.assertEqual(1, len(w))
-        self.assertEqual(DeprecationWarning, w[0].category)
-        self.assertEqual('pithy message', str(w[0].message))
 
     def testDeprecationNone(self):
         """Test the deprecation decorator with no docstring"""
@@ -52,18 +47,55 @@ class SpacepyFuncTests(unittest.TestCase):
         def testfunc(x):
             return x + 1
         self.assertEqual(
-            "    \n"
+            "\n"
             "    .. deprecated:: 0.1\n"
-            "       pithy message\n"
-            "    \n",
+            "       pithy message",
             testfunc.__doc__)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.filterwarnings('always', 'pithy message',
-                                    DeprecationWarning, '^spacepy')
+        with spacepy_testing.assertWarns(self, 'always', r'pithy message$',
+                                         DeprecationWarning, r'spacepy$'):
             self.assertEqual(2, testfunc(1))
-        self.assertEqual(1, len(w))
-        self.assertEqual(DeprecationWarning, w[0].category)
-        self.assertEqual('pithy message', str(w[0].message))
+
+    def testDeprecationDifferentIndent(self):
+        """Test the deprecation decorator, first line indented differently"""
+        @spacepy.deprecated(0.1, 'pithy message')
+        def testfunc(x):
+            """test function
+
+            this will test things
+            """
+            return x + 1
+        self.assertEqual(
+            "test function\n"
+            "\n"
+            "            .. deprecated:: 0.1\n"
+            "               pithy message\n"
+            "\n"
+            "            this will test things\n"
+            "            ",
+            testfunc.__doc__)
+
+    def testDeprecationDifferentMessage(self):
+        """Test the deprecation decorator, docstring different from message"""
+        @spacepy.deprecated(0.1, 'pithy message', docstring='foo\nbar')
+        def testfunc(x):
+            """test function
+
+            this will test things
+            """
+            return x + 1
+        self.assertEqual(
+            "test function\n"
+            "\n"
+            "            .. deprecated:: 0.1\n"
+            "               foo\n"
+            "               bar\n"
+            "\n"
+            "            this will test things\n"
+            "            ",
+            testfunc.__doc__)
+        with spacepy_testing.assertWarns(self, 'always', r'pithy message$',
+                                         DeprecationWarning, r'spacepy$'):
+            self.assertEqual(2, testfunc(1))
 
 
 if __name__ == '__main__':
