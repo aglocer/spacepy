@@ -374,7 +374,7 @@ class Lines(PbData):
         '''
 
         for s in ['H', 'O', 'He', 'e']:
-            self[s+'Flux']=dmarray(1000*self['n'+s]*self['u'+s],  {'units':'$cm^{-2}s^{-1}$'})
+            self[s+'Flux']=dmarray(100000*self['n'+s]*self['u'+s],  {'units':'$cm^{-2}s^{-1}$'})
 
     def _get_cartXY(self):
         '''
@@ -697,4 +697,234 @@ class slice(PbData):
                 
 
         return fig, ax, cont, cbar
+    
+    def calc_flux(self):
+        '''
+        Calculate flux in units of #/cm2/s.  Variables saved as self[species+'Flux'].
+        '''
 
+        for s in ['H', 'O', 'He', 'e']:
+            self[s+'Flux']=dmarray(1000*self['n'+s]*self['u'+s],  {'units':'$cm^{-2}s^{-1}$'})
+
+    def calc_fluence(self):
+        '''
+        Calculate the fluence of particles moving through a given slice
+        '''
+        from scipy.interpolate import griddata
+
+        #start by getting the flux if not already set
+        if not hasattr(self,'HFlux'):
+            self.calc_flux
+        #define a regular grid to interpolate soluation on for fluence calc
+        # set regular grid sapcing
+        ThetaReg = np.linspace(0., 40.*np.pi/180., 90)
+        PhiReg   = np.linspace(0., 2*np.pi, 180)
+        
+        #set delta theta and phi
+        dTheta = ThetaReg[1]-ThetaReg[0]
+        dPhi   = PhiReg[1]-PhiReg[0]
+        
+        #create the thetas and phis 2D grid
+        thetas, phis = np.meshgrid(ThetaReg, PhiReg)
+
+        nTime = self.attrs['nTimes']
+        nPoint = self.attrs['nPoint']
+        
+        #now compute the fluence for each species at each time
+        for iTime in range(nTime-1):
+            for s in ['H', 'O', 'He', 'e']:
+                #set the line data locations and values
+                Theta = 0.5*np.pi-np.pi/180.*np.asarray(abs(self['Lat'][iTime,:]))
+                Phi   = np.pi/180.*np.asarray(self['Lon'][iTime,:])
+                
+                Flux = np.asarray(self[s+'Flux'][iTime,:])
+                
+                
+                self[s+'Fluence']=dmarray(1000*self['n'+s]*self['u'+s],  {'units':'$cm^{-2}s^{-1}$'})
+
+
+class DistributionFunction(PbData):
+    '''
+    Class for loading a DistFunc*.out file containing ion distribution function
+    from PWOM.
+    At instantiation time, user may wish to set the start date and time of 
+    the simulation using the starttime kwarg.  If not given, start time
+    will default to Jan. 1st, 2000, 00:00UT.
+    '''
+    def __init__(self, filename, starttime=None, *args, **kwargs):
+        super(DistributionFunction, self).__init__(*args, **kwargs) # Init as PbData.
+        self.attrs['file']=filename
+        if not starttime:
+            starttime=dt.datetime(2000,1,1,0,0,0)
+        self._read(starttime)
+
+    def __repr__(self):
+        return 'DistFunc*.out single output file %s' % (self.attrs['file'])
+
+    def _read(self, starttime):
+        '''
+        Read DistFunc*.out file; should only be called upon instantiation.
+        '''
+
+        # Reads file assuming it is ascii
+        # Slurp whole file.
+        f=open(self.attrs['file'], 'r')
+        lines=f.readlines()
+        f.close()
+        
+        # Determine size of file.
+        nTimes=lines.count(lines[0])
+        nVperp =int(lines[2].split()[0])
+        nVpar =int(lines[2].split()[1]) 
+
+        self.attrs['nVperp'] =nVperp
+        self.attrs['nVpar'] =nVpar
+        self.attrs['nTime']=nTimes
+
+        nDataLength = nVperp*nVpar
+        
+        # Start building time array.
+        self['time']=np.zeros(nTimes, dtype=object)
+        
+        # Get variable names; pop g and rbody
+        var=(lines[4].split())[0:-2]
+        self._rawvar=var
+        
+        # initialize arrays to hold data
+        for v in var:
+            self[v]=dmarray(np.zeros((nTimes, nDataLength)))
+
+            # Set units if possible
+            if v=='Vperp[cm/s]' or v=='Vpar[cm/s]':
+                self[v].attrs['units']='cm/s'
+            elif v[0:3]=='Par':
+                self[v].attrs['units']='psd'
+            else:
+                self[v].attrs['units']=None
+
+                    
+        # Loop through rest of data to fill arrays.
+        for i in range(nTimes):
+            t=float((lines[i*(nDataLength+5)+1].split())[1])
+            self['time'][i]=starttime+dt.timedelta(seconds=t)
+            for j, l in enumerate(lines[i*(nDataLength+5)+5:(i+1)*(nDataLength+5)]):
+                parts=l.split()
+                for k,v in enumerate(var):
+                    self[v][i,j]=float(parts[k])
+                            
+
+    def plot_df(self, var, time, nlev=31, zlim=None, xlim=None, ylim=None,
+                  target=None, 
+                  loc=111, title=None,
+                  add_cbar=True, clabel=None,
+                  show_pts=False, dolog=False, add_body=True,  
+                  figsize=(8.34,7),
+                  *args, **kwargs):
+        '''
+        Create a plot of variable *var* at a given time.
+
+        If kwarg **target** is None (default), a new figure is 
+        generated from scratch.  If target is a matplotlib Figure
+        object, a new axis is created to fill that figure at subplot
+        location **loc**.  If **target** is a matplotlib Axes object, 
+        the plot is placed into that axis.
+        '''
+
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import (LogNorm, Normalize)
+        from matplotlib.patches import Circle
+        from matplotlib.ticker import (LogLocator, LogFormatter, 
+                                       LogFormatterMathtext, MultipleLocator)
+        from matplotlib.patches import Wedge
+        
+        # Grab the slice of data that we want:
+        if type(time) == type(self['time'][0]):
+            if time not in self['time']:
+                raise ValueError('Time not in object')
+            time = np.arange(self.attrs['nTime'])[self['time']==time][0]
+
+        fig, ax = set_target(target, loc=loc, figsize=figsize)
+        ax.set_aspect('equal')
+
+        # Grab values from correct time/location.
+        x = self['Vperp[cm/s]'][time, :]
+        y = self['Vpar[cm/s]'][time, :]
+        value = self[var][time, :]
+
+        # Get max/min if none given.
+        if zlim==None:
+            zlim=[0,0]
+            zlim[0]=value.min(); zlim[1]=value.max()
+            if dolog and zlim[0]<=0:
+                zlim[0] = np.min( [0.0001, zlim[1]/1000.0] )
+        
+        # Create levels and set norm based on dolog.
+        if dolog:
+            levs = np.power(10, np.linspace(np.log10(zlim[0]), 
+                                            np.log10(zlim[1]), nlev))
+            z=np.where(value>zlim[0], value, 1.01*zlim[0])
+            norm=LogNorm()
+            ticks=LogLocator()
+            fmt=LogFormatterMathtext()
+        else:
+            levs = np.linspace(zlim[0], zlim[1], nlev)
+            z=value
+            norm=None
+            ticks=None
+            fmt=None
+        
+        # Create contour plot.
+        cont=ax.tricontourf(np.asarray(x), np.asarray(y), np.asarray(z), \
+                            np.asarray(levs), *args, norm=norm, **kwargs)
+        if show_pts:
+            ax.plot(x, y, '+w')
+
+        if xlim != None:
+            ax.set_xlim(xlim[0],xlim[1])
+
+        if ylim != None:
+            ax.set_ylim(ylim[0],ylim[1])
+            
+        # Add cbar if necessary.
+        if add_cbar:
+            cbar=plt.colorbar(cont, ticks=ticks, format=fmt, pad=0.01)
+            if clabel==None: 
+                clabel="%s" % (var)
+            cbar.set_label(clabel)
+        else:
+            cbar=None # Need to return something, even if none.
+ 
+        # Set title, labels, axis ranges (use defaults where applicable.)
+        if title: ax.set_title(title)
+        #ax.set_yticks([]), ax.set_xticks([])
+        ax.set_xlabel('Vpar [cm/s]')
+        ax.set_ylabel('Vperp [cm/s]')
+
+            
+        return fig, ax, cont, cbar
+    
+    def interpolate(self, var, xpt, ypt, time):
+        '''
+        extract solution at given point and time
+        '''
+        from scipy.interpolate import griddata
+        
+        #find closest time to do the interpolation
+        dt=self['time']-time 
+        iTime=np.where(abs(dt) == np.min(abs(dt))) [0][0]
+        
+        #get number of points
+        nPoints=len(self['x'][iTime,:]) 
+        
+        #create point pairs
+        Points=np.zeros([nPoints,2]) 
+        for i in range(nPoints): 
+            Points[i][0]=self['x'][iTime,i] 
+            Points[i][1]=self['y'][iTime,i]
+
+        Values=self[var][iTime,:]
+            
+        InterpValue = griddata(Points, Values, (xpt, ypt),
+                               method='linear',fill_value=0.0)
+        
+        return InterpValue
