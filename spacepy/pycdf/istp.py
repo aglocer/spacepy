@@ -2,7 +2,7 @@
 
 """Support for ISTP-compliant CDFs
 
-The `ISTP metadata standard  <https://spdf.gsfc.nasa.gov/sp_use_of_cdf.html>`_
+The `ISTP metadata standard <https://spdf.gsfc.nasa.gov/sp_use_of_cdf.html>`_
 specifies the interpretation of the attributes in a CDF to describe
 relationships between the variables and their physical interpretation.
 
@@ -372,17 +372,10 @@ class VariableChecks(object):
         timetype = v.type() in spacepy.pycdf.lib.timetypes
         actual = (v.cdf_file.raw_var(v.name()) if timetype else v)\
                  .attrs['FILLVAL']
-        # isclose added in numpy 1.7, so fix this when go to 0.3.0
-        if hasattr(numpy, 'isclose'):
-            match = numpy.isclose(
-                actual, expected, atol=0, rtol=1e-7)\
-                if numpy.issubdtype(v.dtype, numpy.floating)\
-                else numpy.all(actual == expected)
-        else:
-            if numpy.issubdtype(v.dtype, numpy.floating):
-                match = (abs(actual - expected) / expected < 1e-7)
-            else:
-                match = numpy.all(actual == expected)
+        match = numpy.isclose(
+            actual, expected, atol=0, rtol=1e-7)\
+            if numpy.issubdtype(v.dtype, numpy.floating)\
+            else numpy.all(actual == expected)
         if not match:
             if timetype:
                 converted_expected = {
@@ -1146,7 +1139,7 @@ def nanfill(v):
     """
     #If input is a zVar, read all the data; if not, this is a no-copy operation
     indata = v[...]
-    badidx = numpy.zeros(shape=v.shape, dtype=numpy.bool)
+    badidx = numpy.zeros(shape=v.shape, dtype=bool)
     if 'FILLVAL' in v.attrs:
         badidx |= (indata == v.attrs['FILLVAL'][...])
     if 'VALIDMIN' in v.attrs:
@@ -1171,16 +1164,45 @@ class VarBundle(object):
 
     Representation of an ISTP-compliant variable bundled together
     with its dependencies to enable aggregate operations. Normally
-    used to copy a subset of data from one CDF to another by
-    chaining operations.
+    used to copy a subset of data from one CDF or SpaceData to another by
+    chaining operations, or to load just the relevant data from a CDF
+    into a :class:`~spacepy.datamodel.SpaceData`.
+
+    ``VarBundle`` operates on a single variable within a file or SpaceData
+    and its various dependencies, uncertainties, labels, etc. That variable
+    can be specified one of two ways. An open CDF file or
+    SpaceData can be passed as the first parameter, and the name of a
+    variable within it as the second parameter. Or, for CDF files, a
+    :class:`~.pycdf.Var` can be passed as the only parameter, implicitly
+    defining the input file (the CDF containing that variable).
 
     Unusual or indecipherable error messages may indicate an ISTP
     compliance issue; see :class:`VariableChecks` for some checks.
 
     Parameters
     ----------
-    var : :class:`~spacepy.pycdf.Var`
-        Variable to process
+    source : :class:`~.pycdf.CDF`, :class:`~.datamodel.SpaceData`, or :class:`~.pycdf.Var`
+        SpaceData or open CDF containing the variable to process, or the CDF variable itself.
+    name : :class:`str`
+        Name of the variable within ``source`` to process ("main variable").
+
+    See Also
+    --------
+    .datamodel.fromCDF
+    .pycdf.CDF.copy
+
+    Notes
+    -----
+    If using :class:`~.datamodel.SpaceData` input, the contents are
+    assumed to be `ISTP compliant
+    <https://spdf.gsfc.nasa.gov/sp_use_of_cdf.html>`_. In particular,
+    the following attributes of the enclosed
+    :class:`~.datamodel.dmarray` are used (*italics* denotes required):
+
+        * *DEPEND_0*, *DEPEND_1*, etc.
+        * LABL_PTR_0, LABL_PTR_1, etc.
+        * DELTA_PLUS_VAR, DELTA_MINUS_VAR
+        * VALIDMIN, VALIDMAX, *FILLVAL*
 
     Examples
     --------
@@ -1201,6 +1223,7 @@ class VarBundle(object):
     ...
     >
     >>> b = spacepy.pycdf.istp.VarBundle(infile['FPDU'])
+    >>> b = spacepy.pycdf.istp.VarBundle(infile, 'FPDU')  # Equivalent
     >>> outfile = spacepy.pycdf.CDF('output.cdf', create=True)
     >>> b.slice(1, 2, single=True).output(outfile)
     <VarBundle:
@@ -1234,6 +1257,7 @@ class VarBundle(object):
         output
         slice
         sum
+        toSpaceData
         variables
 
     .. automethod:: mean
@@ -1241,22 +1265,30 @@ class VarBundle(object):
     .. automethod:: operations
     .. automethod:: slice
     .. automethod:: sum
+    .. automethod:: toSpaceData
     .. automethod:: variables
 
     """
 
-    def __init__(self, var):
+    def __init__(self, source, name=None):
         """Initialize variable bundle
 
         Parameters
         ----------
-        var : :class:`~spacepy.pycdf.Var`
-            Variable to process
+        source : :class:`~spacepy.pycdf.CDF` or :class:`~spacepy.pycdf.Var`
+            CDF containing the variable to process, or the variable itself.
+        name : :class:`str`
+            Name of the variable within ``source`` to process ("main variable").
         """
-        self.mainvar = var
+        if name is None and not hasattr(source, 'cdf_file'):
+            raise TypeError('Single-argument form must be a variable'
+                ' in an open CDF, not {}.'.format(type(source).__name__))
+        self.mainvar = source if name is None else source[name]
         """The variable to operate on."""
-        self.cdf = self.mainvar.cdf_file
+        self.cdf = self.mainvar.cdf_file if name is None else source
         """Input CDF file containing the main variable."""
+        self._name = self.mainvar.name() if name is None else name
+        """Name of the main variable"""
         self._varinfo = {}
         """Keyed by variable name. Values are also dicts, keys are
         ``dims``, list of the main variable dimensions corresponding
@@ -1279,7 +1311,7 @@ class VarBundle(object):
         """Index by dim, is this dim averaged."""
         self._getvarinfo()
 
-    def _process_delta(self, mainvar, deltaname):
+    def _process_delta(self, mainname, deltaname):
         """Handle DELTA_PLUS/DELTA_MINUS attributes
 
         A DELTA variable should be the same shape and the same
@@ -1287,10 +1319,10 @@ class VarBundle(object):
 
         Parameters
         ----------
-        mainvar : :class:`~spacepy.pycdf.Var`
-            Variable that references the DELTA, i.e. it has a
+        mainname : str
+            Name of variable that references the DELTA, i.e. it has a
             DELTA_PLUS_VAR/DELTA_MINUS_VAR attribute that references
-            ``deltavar``.
+            ``deltaname``.
 
         deltaname : str
             Name of the DELTA variable itself.
@@ -1301,7 +1333,7 @@ class VarBundle(object):
             dims/slice information suitable for inclusion in ``_varinfo``.
         """
         thisvar = self.cdf[deltaname]
-        mainname = mainvar.name()
+        mainvar = self.cdf[mainname]
         for a in thisvar.attrs: #Check that all dependencies match
             if not a.startswith(('DEPEND_', 'LABL_PTR_')):
                 continue
@@ -1312,13 +1344,15 @@ class VarBundle(object):
             elif thisvar.attrs[a] != mainname:
                 raise ValueError('{}: attribute {} not in main var'
                                  .format(deltaname, a))
-        if thisvar.rv() and not mainvar.rv():
+        rv = thisvar.rv() if hasattr(thisvar, 'rv')\
+             else 'DEPEND_0' in thisvar.attrs
+        if rv and not self._varinfo[mainname]['rv']:
             raise ValueError(
                 '{}: Cannot handle RV DELTA with NRV variable.'
                 .format(deltaname))
         thisshape = thisvar.shape
         mainshape = mainvar.shape
-        if not thisvar.rv() and mainvar.rv(): #Ignore record dim
+        if not rv and self._varinfo[mainname]['rv']: #Ignore record dim
             mainshape = mainshape[1:]
         if thisshape != mainshape:
             raise ValueError('{}: DELTA/main var shape mismatch.'
@@ -1327,7 +1361,12 @@ class VarBundle(object):
         #get removed when actually slicing.
         result = { k: self._varinfo[mainname][k][:]
                   for k in ('dims', 'slice', 'postidx') }
-        result['sortorder'] = 2
+        result.update({
+            'dv': thisvar.dv() if hasattr(thisvar, 'dv')\
+                  else [True] * (len(result['dims']) - 1),
+            'rv': rv,
+            'sortorder': 2,
+            })
         return result
 
     def _getvarinfo(self):
@@ -1336,22 +1375,26 @@ class VarBundle(object):
         For main variable and its dependencies, find how dimensions
         relate to the main variable, and find all DELTA variables.
         """
-        name = self.mainvar.name()
+        rv = self.mainvar.rv() if hasattr(self.mainvar, 'rv')\
+             else 'DEPEND_0' in self.mainvar.attrs
         #Every dim maps back to itself for the main variable
-        dims = list(range(len(self.mainvar.shape)
-                          + int(not self.mainvar.rv())))
+        dims = list(range(len(self.mainvar.shape) + int(not rv)))
         self._degenerate = [False] * len(self.mainvar.shape)
         self._summed = [False] * len(self.mainvar.shape)
         self._mean = [False] * len(self.mainvar.shape)
-        if not self.mainvar.rv(): #Fake the 0-dim
+        if not rv: #Fake the 0-dim
             self._degenerate.insert(0, False)
             self._summed.insert(0, False)
             self._mean.insert(0, False)
         #And every dimension is a full slice, to start
-        self._varinfo[name] = {
+        self._varinfo[self._name] = {
             'dims': dims,
+            # Dim variance is CDF concept--if not specified, assume True
+            'dv': self.mainvar.dv() if hasattr(self.mainvar, 'dv')\
+                  else [True] * (len(dims) - 1),
             'slice': [slice(None)] * len(dims),
             'postidx': [slice(None)] * len(dims),
+            'rv': rv,
             'sortorder': 0,
             'vartype': 'M',
         }
@@ -1376,8 +1419,10 @@ class VarBundle(object):
             #Dimension of main var that corresponds to this var
             dim = int(a.split('_')[-1])
             dims = [0,] #Record dim always matches
+            rv = thisvar.rv() if hasattr(thisvar, 'rv')\
+                 else 'DEPEND_0' in thisvar.attrs or a == 'DEPEND_0'
             #For every CDF (non-record) dim, match to the main variable
-            for i in range(1, len(thisvar.shape) + int(not thisvar.rv())):
+            for i in range(1, len(thisvar.shape) + int(not rv)):
                 #DEPEND; LABL_PTR for this dimension
                 dim_dep = 'DEPEND_{}'.format(i)
                 labl_dep = 'LABL_PTR_{}'.format(i)
@@ -1401,8 +1446,11 @@ class VarBundle(object):
                                  .format(thisname))
             self._varinfo[thisname] = {
                 'dims': dims,
+                'dv': thisvar.dv() if hasattr(thisvar, 'dv')\
+                      else [True] * (len(dims) - 1),
                 'slice': [slice(None)] * len(dims),
                 'postidx': [slice(None)] * len(dims),
+                'rv': rv,
                 'sortorder': 1 if a.startswith('DEPEND_') else 3,
                 'thisdim': dim,
                 'vartype': 'D',
@@ -1415,7 +1463,7 @@ class VarBundle(object):
                 if deltaname in self._varinfo:
                     continue
                 self._varinfo[deltaname] \
-                    = self._process_delta(thisvar, deltaname)
+                    = self._process_delta(thisname, deltaname)
                 self._varinfo[deltaname]['vartype'] = 'D' #just like other deps
                 self._varinfo[deltaname]['thisdim'] = dim
         for a in ('DELTA_PLUS_VAR', 'DELTA_MINUS_VAR'): #Process DELTA vars
@@ -1425,7 +1473,7 @@ class VarBundle(object):
             if thisname not in self._varinfo:
                 #If DELTA_PLUS/DELTA_MINUS are same var, skip second one
                 self._varinfo[thisname] \
-                    = self._process_delta(self.mainvar, thisname)
+                    = self._process_delta(self._name, thisname)
                 self._varinfo[thisname]['vartype'] = 'U'
 
     def slice(self, dim, start=None, stop=None, step=None,
@@ -1681,11 +1729,18 @@ class VarBundle(object):
         bool
             True if the existing variable is the same; False if not.
         """
+        # CDF output only checks
+        if hasattr(newvar, 'type'):
+            if newvar.rv() != rv or newvar.dv() != dv:
+                return False
+            if hasattr(invar, 'type') and newvar.type() != invar.type():
+                return False
+            if hasattr(invar, 'nelems') and newvar.nelems() != invar.nelems():
+                return False
         #Check basic type, dimensions, etc.
-        if newvar.rv() != rv or newvar.type() != invar.type() \
-            or len(dims) != (len(newvar.shape) - newvar.rv()) \
-            or newvar.dv() != dv or newvar.nelems() != invar.nelems() \
-            or list(dims) != list(newvar.shape[newvar.rv():]):
+        if newvar.dtype != invar.dtype\
+            or len(dims) != (len(newvar.shape) - rv) \
+            or list(dims) != list(newvar.shape[rv:]):
             return False
         ia = invar.attrs
         na = newvar.attrs
@@ -1695,8 +1750,11 @@ class VarBundle(object):
                 #depends/LABL PTR shift around, and FIELDNAM may change,
                 #so test outside of this function.
                 pass
-            if not a in na or ia.type(a) != na.type(a) \
-               or not numpy.array_equal(ia[a], na[a]):
+            if not a in na or not numpy.array_equal(ia[a], na[a]):
+                return False
+            # CDF input *and* output only
+            if hasattr(na, 'type') and hasattr(ia, 'type')\
+               and ia.type(a) != na.type(a):
                 return False
         #Finally check the data
         return (data == newvar[...]).all()
@@ -1772,7 +1830,7 @@ class VarBundle(object):
             and ``averaged`` inputs.
         """
         #Correction for NRV variables in the mapping between dim and axis
-        nrv = int(not invar.rv())
+        nrv = int(not vinfo['rv'])
         #Degenerate slices have already been removed, so need
         #a map from old dim numbers to new ones. Note removing
         #the record dimension does not shift other dims!
@@ -1810,7 +1868,7 @@ class VarBundle(object):
             else: #Should not happen
                 raise ValueError('Bad summation type.')
             if ax in avgme: #divide out
-                count = numpy.sum(~invalid, axis=ax)
+                count = numpy.sum(~invalid, axis=ax, dtype=data.dtype)
                 invalid = (count == 0)
                 count[invalid] = 1 #avoid warning
                 data = data / count
@@ -1918,7 +1976,7 @@ class VarBundle(object):
             return None
         vinfo = self._varinfo[vname]
         invar = self.cdf[vname]
-        rv = invar.rv()
+        rv = vinfo['rv']
         shape = invar.shape
         sl = vinfo['slice']
         postidx = vinfo['postidx']
@@ -1974,7 +2032,7 @@ class VarBundle(object):
             l.sort(key=lambda x: (self._varinfo[x]['sortorder'], x))
         variables = [[(v, self._outshape(v))
                       for v in v_by_dim.get(None, [])]]
-        vi = self._varinfo[self.mainvar.name()]
+        vi = self._varinfo[self._name]
         for dim in vi['dims']:
             variables.append([
                 (v, self._outshape(v)) for v in v_by_dim.get(dim, [])])
@@ -2008,7 +2066,7 @@ class VarBundle(object):
         ...     getattr(b2, op)(*args, **kwargs)
         """
         ops = []
-        vi = self._varinfo[self.mainvar.name()]
+        vi = self._varinfo[self._name]
         for dim in vi['dims']:
             sl = vi['slice'][dim]
             postidx = vi['postidx'][dim]
@@ -2033,8 +2091,9 @@ class VarBundle(object):
 
         Parameters
         ----------
-        output : :class:`~spacepy.pycdf.CDF`
-            Output CDF to receive the new data.
+        output : :class:`~spacepy.pycdf.CDF`,  :class:`~spacepy.datamodel.SpaceData`
+            Output container to receive the new data, may be an open CDF
+            file or a SpaceData.
 
         suffix : str
             Suffix to append to the name of any variables that are changed
@@ -2048,6 +2107,10 @@ class VarBundle(object):
         -------
         VarBundle
             This bundle, for method chaining.
+
+        See Also
+        --------
+        toSpaceData
 
         Examples
         --------
@@ -2075,13 +2138,15 @@ class VarBundle(object):
             summed = [self._summed[d] for d in vinfo['dims']]
             #And averaged
             averaged = [self._mean[d] for d in vinfo['dims']]
-            invar = self.cdf.raw_var(vname)
+            # Raw data for CDF input *and* output only
+            invar = self.cdf.raw_var(vname) if hasattr(output, 'raw_var')\
+                    and hasattr(self.cdf, 'raw_var') else self.cdf[vname]
             sl = vinfo['slice'] #including 0th dim
             postidx = vinfo['postidx']
             #Dimension size/variance for original variable
             #(0 index is CDF dimension 1)
-            dv = invar.dv()
-            rv = invar.rv() #and record variance
+            dv = self._varinfo[vname]['dv']
+            rv = self._varinfo[vname]['rv']  #and record variance
             #Scrub degenerate dimensions from the post-indexing
             #(record is never degenerate)
             postidx = [postidx[i] for i in range(len(postidx))
@@ -2102,7 +2167,8 @@ class VarBundle(object):
             #Get shape of output variable from actual data
             dims = data.shape
             #Raw Epoch16 have a trailing (2,)
-            if invar.type() == spacepy.pycdf.const.CDF_EPOCH16.value:
+            if hasattr(invar, 'type')\
+               and invar.type() == spacepy.pycdf.const.CDF_EPOCH16.value:
                 dims = dims[:-1]
             #Cut out any degenerate dimensions from DV (skipping record dim)
             dv = [dv[i] for i in range(len(dv)) if not degen[i + 1]]
@@ -2116,27 +2182,101 @@ class VarBundle(object):
             outname = namemap.get(vname, vname)
             if outname in output:
                 preexist = True
-                newvar = output.raw_var(outname)
+                newvar = output.raw_var(outname) if hasattr(output, 'raw_var')\
+                         and hasattr(self.cdf, 'raw_var') else output[outname]
                 if not self._same(newvar, invar, rv, dv, dims, data):
                     raise RuntimeError(
                         'Incompatible {} already exists in output.'
                         .format(outname))
             else:
                 preexist = False
-                newvar = output.new(
-                    outname, type=invar.type(), recVary=rv,
-                    dimVarys=dv, dims=dims,
-                    n_elements=invar.nelems())
-                newvar = output.raw_var(outname)
-                #Must create it empty so can change compression
-                newvar.compress(*invar.compress())
-                newvar[...] = data
-                newvar.attrs.clone(invar.attrs)
+                if hasattr(output, 'new'):
+                    t = invar.type() if hasattr(invar, 'type') else None
+                    try:
+                        compress, compress_param = invar.compress()
+                    except (TypeError, AttributeError):
+                        # arrays have a different "compress"
+                        compress, compress_param = None, None
+                    ne = invar.nelems() if hasattr(invar, 'nelems') else None
+                    newvar = output.new(
+                        outname, data=data,
+                        type=t, recVary=rv,
+                        dimVarys=dv, dims=dims,
+                        n_elements=ne,
+                        compress=compress, compress_param=compress_param)
+                    newvar.attrs.clone(invar.attrs)
+                else:
+                    newvar = spacepy.dmarray(data, attrs=invar.attrs.copy())
+                    output[outname] = newvar
                 if vname != outname: #renamed
                     newvar.attrs['FIELDNAM'] = outname
 
             self._repoint_depend(invar, newvar, preexist, namemap, degen)
         return self
+
+    def toSpaceData(self, suffix=None):
+        """Return variables, as modified.
+
+        Convenience function to call :meth:`output` on a new
+        :class:`~.datamodel.SpaceData` and return it.
+
+        Parameters
+        ----------
+        suffix : str
+            Appended to the name of variables changed on output; see
+            :meth:`output` for details.
+
+        Returns
+        -------
+        :class:`.datamodel.SpaceData`
+            Data read from input and processed according to the defined
+            operations.
+
+        See Also
+        --------
+        output
+
+        Examples
+        --------
+        >>> import spacepy.pycdf
+        >>> import spacepy.pycdf.istp
+        >>> infile = spacepy.pycdf.CDF('rbspa_rel04_ect-hope-PA-L3_20121201_v7.1.0.cdf')
+        >>> b = spacepy.pycdf.istp.VarBundle(infile['FPDU'])
+        >>> data = b.slice(1, 2, single=True).toSpaceData()
+        >>> infile.close()
+        >>> data.tree()
+        +
+        |____ENERGY_Ion_DELTA
+        |____Energy_LABL
+        |____Epoch_Ion
+        |____Epoch_Ion_DELTA
+        |____FPDU
+        |____HOPE_ENERGY_Ion
+        """
+        sd = spacepy.SpaceData()
+        self.output(sd, suffix=suffix)
+        return sd
+
+    @staticmethod
+    def _vtype(v):
+        """String representation of type of a variable
+
+        Parameters
+        ----------
+        v
+            Open CDF variable, numpy array, or similar
+
+        Returns
+        -------
+        str
+            String representation of type of ``v``, either as CDF type
+            or numpy type
+        """
+        # Kludge, but assumes main CDF code gets it right
+        res = str(v).split(' ')[0]
+        if res.startswith('CDF_'):
+            return res
+        return str(v.dtype)
 
     def __str__(self):
         """String representation of the bundle
@@ -2154,12 +2294,12 @@ class VarBundle(object):
             '{}{}: {} {}{}'.format(
                 ' ' * 4 if self._varinfo[vname]['sortorder'] > 1 else '',
                 vname,
-                str(self.cdf[vname]).split(' ')[0], #Grab type from Var str
+                self._vtype(self.cdf[vname]),
                 str(list(shape)) if shape is not None else '---',
                 #RV vars always have dim 0 as axis 0, so they become
                 #NRV iff dim 0 of the main var goes away
                 ' NRV' if shape is not None
-                and (not self.cdf[vname].rv() or max(
+                and (not self._varinfo[vname]['rv'] or max(
                     self._degenerate[0], self._summed[0], self._mean[0]))
                 else ''
             )

@@ -59,7 +59,6 @@ def getLmax(ticks, model='JKemp', dbase='QDhourly'):
     ========
     spacepy.LANLstar.LANLmax
 
-
     """
     omni = om.get_omni(ticks, dbase=dbase)
     Dst = omni['Dst']

@@ -23,6 +23,8 @@ from test_empiricals import *
 from test_toolbox import *
 from test_omni import *
 from test_coordinates import *
+from test_ctrans import *
+from test_igrf import *
 from test_seapy import *
 from test_poppy import *
 from test_pycdf import *
@@ -38,6 +40,7 @@ from test_rst import *
 from test_lib import *
 from test_ae9ap9 import *
 from test_testing import *
+from test_lanlstar import *
 # add others here as they are written
 
 if __name__ == '__main__':

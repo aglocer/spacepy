@@ -25,7 +25,7 @@ Our latest release version is available through PyPI and can be installed using
 pip install spacepy --user
 ```
 
-This will also automatically install most dependencies. To permit binary installations without a compiler, this will not install ffnet on Windows. Users needing the LANLstar module can install ffnet separately (requires Fortran compiler); this can be done before or after the SpacePy install.
+This will also automatically install most dependencies.
 
 The latest "bleeding-edge" source code is available from our github repository at [https://github.com/spacepy/spacepy](https://github.com/spacepy/spacepy) and can be installed using the standard
 
@@ -47,7 +47,6 @@ SpacePy has a number of well-maintained dependencies, most of which are automati
  - h5py
 
 Soft dependencies (that are required only for a very limited part of SpacePy's functionality) are:
- - ffnet
  - NASA CDF
 
 For complete installation, excepting pre-built Windows binaries, SpacePy also requires C and Fortran compilers. We test with GCC compilers but try to maintain support for all major compilers.
@@ -75,4 +74,5 @@ Certain modules may provide additional citations in the ```__citation__``` attri
 
 For acknowledging SpacePy, please provide the URL to our github repository. [github.com/spacepy/spacepy](https://github.com/spacepy/spacepy)
 
-
+## Changes
+Changes in the released version of SpacePy are provided in the [release notes](https://spacepy.github.io/release_notes.html). For changes since the latest release, see the [repository version](https://github.com/spacepy/spacepy/blob/master/Doc/source/release_notes.rst).

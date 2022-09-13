@@ -1,6 +1,17 @@
-Changes in Version 0.2.3 (2021-xx-xx)
+Changes in 0.3.0 and later are documented in the release notes.
+
+Changes in Version 0.2.3 (2021-10-30)
 =====================================
 - Installs numpy before build on newer versions of pip (thanks Michael Hirsch)
+- Fixes install with new versions of setuptools
+- Better handling of unusual status of .spacepy directory
+- More robust handling of Windows library loading on Python 3.8+
+coordinates
+ - Added Coords methods to convert to/from Astropy SkyCoord instances
+irbempy
+ - Update IRBEMlib to git commit a4759c0 (2021-06-30)
+ - This update fixes an uninitialized GSM to SM transform that would return NaN
+ - Fix bug in multiprocessed get_lstar when explicitly passing omni values
 plot
  - Deprecate colourmaps; they were in matplotlib 1.5.
 tests
@@ -8,8 +19,11 @@ tests
  - Add assertWarns and assertDoesntWarn context managers.
 time
  - Fix warning for out-of-date leapseconds.
+ - Apply post-1972 leapsecond rules to pre-1972.
 toolbox
  - Fix bootHisto passing of kwargs to histogram and bar.
+pybats
+ - Fix bug in reading RAM pressure files (affected electrons and total)
 pycdf
  - Add support for Sparse Records variables.
  - Fix changing compression when creating variable from existing var/data.

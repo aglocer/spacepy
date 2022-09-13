@@ -39,6 +39,7 @@ import datetime as dt
 import gzip
 import os
 import re
+import warnings
 
 from dateutil import relativedelta
 import numpy as np
@@ -529,9 +530,18 @@ def _parseInfo(header):
         elif "Energy levels" in val:
             match = re.match(r'^Energy levels.*\((.*)\):(.*)$', val)
             ans['energy'] = (np.asarray(match.group(2).strip().split()).astype(float), match.group(1).strip())
-        elif "generated from specified elements" in val:
-            match = re.search(r'^generated from specified elements.*:\ (.*)$', val)
+        # Get the orbital element propagator, two versions based on AE9 model changes
+        # new format data file
+        elif "Propagator" in val:  # New format
+            match = re.search(r'Propagator:\ (.*)$', val)
             ans['propagator'] = match.group(1).strip()
+        elif "generated from specified elements" in val:  # In both old and new
+            match = re.search(r'^generated from specified elements.*:\ (.*)$', val)
+            if match:  # But old has propagator on this line; process and warn
+                warnings.warn(
+                    "Support for orbit files from AE9AP9 model <1.5 is deprecated; please update to model 1.5 or later.",
+                    DeprecationWarning)
+                ans['propagator'] = match.group(1).strip()
     return ans
 
 
@@ -561,6 +571,12 @@ def parseHeader(fname):
     """
     given an AE9AP9 output test file parse the header and return the information in a
     dictionary
+
+        .. versionchanged:: 0.3.0
+
+        The underlying AE9AP9 model changed the ephem file format and this
+        reader was updated to match. Reading the old format will issue
+        DeprecationWarning.
 
     Parameters
     ==========

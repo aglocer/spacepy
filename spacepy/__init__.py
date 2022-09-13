@@ -10,8 +10,7 @@ If running the ipython shell, simply type '?' after any command for help.
 ipython also offers tab completion, so hitting tab after '<module name>.'
 will list all available functions, classes and variables.
 
-Detailed HTML documentation is available locally in the spacepy/doc directory
-and can be launched by typing:
+Detailed HTML documentation is available online by typing:
 
     >>> spacepy.help()
 
@@ -56,27 +55,27 @@ try:
     import ConfigParser
 except ImportError:
     import configparser as ConfigParser
+import errno
 import functools
 import multiprocessing
 import os
 import os.path
 import re
+import shutil
 import sys
 import warnings
+import webbrowser
+
 
 def help():
-    """Launches web browser with local HTML help"""
-    
-    import webbrowser
-    fspec = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         'Doc', 'index.html')
-    if not os.path.exists(fspec):
-        fspec = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..',
-                             'Doc', 'build', 'html', 'index.html')
-    if os.path.exists(fspec):
-        webbrowser.open('file://' + fspec)
-    else:
-        print("Can't find help files in {0}".format(__path__[0]))
+    """Launches web browser with SpacePy documentation
+
+    Online help is always for the latest release of SpacePy.
+    """
+    print('Opening docs for latest release. Installed SpacePy is {}.'.format(
+        __version__))
+    webbrowser.open('https://spacepy.github.io/')
+
 
 # put modules here that you want to be accessible through 'from spacepy import *'
 __all__ = ["seapy", "toolbox", "poppy", "coordinates", "time", "omni", 
@@ -94,6 +93,10 @@ if sys.platform == 'win32':
                 os.environ['PATH'] = minglibs
     else:
         os.environ['PATH'] = minglibs
+    try:
+        os.add_dll_directory(minglibs)
+    except AttributeError:  # Python 3.8+ only
+        pass
 
 #actual deprecation decorator
 def _deprecator(version, message, docstring, func):
@@ -316,7 +319,7 @@ def _read_config(rcfile):
                 'qindenton_url': 'http://virbo.org/ftp/QinDenton/hour/merged/latest/WGhour-latest.d.zip',
                 'qd_daily_url': 'https://rbsp-ect.newmexicoconsortium.org/data_pub/QinDenton/',
                 'omni2_url': 'https://spdf.gsfc.nasa.gov/pub/data/omni/omni_cdaweb/hourly/',
-                'leapsec_url': 'https://oceandata.sci.gsfc.nasa.gov/Ancillary/LUTs/modis/leapsec.dat',
+                'leapsec_url': 'https://maia.usno.navy.mil/ser7/tai-utc.dat',
                 'psddata_url': 'http://spacepy.lanl.gov/repository/psd_dat.sqlite',
                 'support_notice': str(True),
                 'apply_plot_styles': str(True),
@@ -354,9 +357,13 @@ def _read_config(rcfile):
         successful = cp.read([rcfile])
     except ConfigParser.Error:
         successful = []
-    if successful: #New file structure
-        config = dict(cp.items('spacepy'))
-    else: #old file structure, wipe it out
+    if successful:  # New file structure
+        try:
+            config = dict(cp.items('spacepy'))
+        except ConfigParser.NoSectionError:
+            successful = []
+            config = {}
+    if not successful:  # Old or bad file structure, wipe it out
         cp = cp_class()
         cp.add_section('spacepy')
         with open(rcfile, 'w') as cf:
@@ -368,36 +375,77 @@ def _read_config(rcfile):
     for k in caster:
         config[k] = caster[k](config[k])
 
-if 'SPACEPY' in os.environ:
-    DOT_FLN = os.path.join(os.environ['SPACEPY'], '.spacepy')
-else:
-    if 'HOME' in os.environ:
-        DOT_FLN = os.path.join(os.environ['HOME'], '.spacepy')
+
+def _find_spacepy_dir():
+    """Determine the .spacepy directory (DOT_FLN)
+
+    This does not create the directory (although will create the parent
+    directory if ``SPACEPY`` environment variable is set).
+
+    Returns
+    -------
+    DOT_FLN : str
+        Full path to the .spacepy directory.
+    """
+    if 'SPACEPY' in os.environ:
+        parentdir = os.path.abspath(os.path.expanduser(os.environ['SPACEPY']))
+        if not os.path.exists(parentdir):
+            try:
+                os.makedirs(parentdir)
+            except OSError as e:
+                if e.errno != errno.EEXIST:  # FileExistsError in 3.3+
+                    raise
+    elif 'HOME' in os.environ:
+        parentdir = os.environ['HOME']
     elif 'HOMEDRIVE' in os.environ and 'HOMEPATH' in os.environ:
-        DOT_FLN = os.path.join(os.environ['HOMEDRIVE'],
-                               os.environ['HOMEPATH'],
-                               '.spacepy')
+        parentdir = os.path.join(
+            os.environ['HOMEDRIVE'], os.environ['HOMEPATH'])
     else:
-        DOT_FLN = os.path.expanduser(os.path.join('~', '.spacepy'))
-rcfile = os.path.join(DOT_FLN, 'spacepy.rc')
-if not os.path.exists(DOT_FLN):
-    import shutil, sys
-    datadir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           'data')
+        parentdir = os.path.expanduser('~')
+    return os.path.join(parentdir, '.spacepy')
+
+
+def _populate_spacepy_dir(DOT_FLN):
+    """Create .spacepy directory and populate.
+
+    Makes sure created and data directory exists.
+
+    Parameters
+    ----------
+    DOT_FLN : str
+        Full path to the .spacepy directory.
+    """
+    if not os.path.exists(DOT_FLN):
+        try:
+            os.mkdir(DOT_FLN)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
     dataout = os.path.join(DOT_FLN, 'data')
-    os.mkdir(DOT_FLN)
-    os.mkdir(dataout)
-    shutil.copy2(os.path.join(datadir, 'tai-utc.dat'), dataout)
-    _read_config(rcfile)
-else:
-    _read_config(rcfile)
+    if not os.path.exists(dataout):
+        datadir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               'data')
+        try:
+            os.mkdir(dataout)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
+        shutil.copy2(os.path.join(datadir, 'tai-utc.dat'), dataout)
+        # Set permissions based on umask, not perms in SpacePy install
+        u = os.umask(0)
+        os.umask(u)
+        os.chmod(os.path.join(dataout, 'tai-utc.dat'), 0o666 & ~u)
+
+
+DOT_FLN = _find_spacepy_dir()
+_populate_spacepy_dir(DOT_FLN)
+rcfile = os.path.join(DOT_FLN, 'spacepy.rc')
+_read_config(rcfile)
 
 if __version__ == 'UNRELEASED' and config['support_notice']:
     print('This unreleased version of SpacePy is not supported '
           'by the SpacePy team.')
-
-
-#Set up a filter to always warn on deprecation
+# Set up a filter to always warn on deprecation
 if config['enable_deprecation_warning']:
     warnings.filterwarnings('default', '', DeprecationWarning,
                             '^spacepy', 0, False)

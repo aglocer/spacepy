@@ -59,6 +59,7 @@ import itertools
 import operator
 import os
 import os.path
+import platform
 import shutil
 import sys
 import tempfile
@@ -82,6 +83,15 @@ try:
     str_classes = (str, bytes, unicode)
 except NameError:
     str_classes = (str, bytes)
+
+
+def _cast_ll(x):
+    """Reinterpret-cast a float to a long long
+
+    Used for typepunning ARM32 arguments.
+    """
+    return ctypes.cast(ctypes.pointer(ctypes.c_double(x)),
+                       ctypes.POINTER(ctypes.c_longlong)).contents
 
 
 class Library(object):
@@ -222,6 +232,34 @@ class Library(object):
 
        Version of the CDF library, (version, release, increment, subincrement)
     """
+
+    _arm32 = platform.uname()[4].startswith('arm') and sys.maxsize <= 2 ** 32
+    """Excuting on 32-bit ARM, which requires typepunned arguments"""
+
+    _signatures = {
+        'breakdownTT2000': [None, ctypes.c_longlong]
+            + [ctypes.POINTER(ctypes.c_double)] * 3,
+        'CDF_TT2000_from_UTC_EPOCH': [ctypes.c_longlong, ctypes.c_double],
+        'CDF_TT2000_from_UTC_EPOCH16': [ctypes.c_longlong,
+                                        ctypes.POINTER(ctypes.c_double * 2)],
+        'CDF_TT2000_to_UTC_EPOCH': [ctypes.c_double, ctypes.c_longlong],
+        'CDF_TT2000_to_UTC_EPOCH16': [ctypes.c_double, ctypes.c_longlong,
+                                      ctypes.POINTER(ctypes.c_double * 2)],
+        'CDFlib': [ctypes.c_long, ctypes.c_long],
+        'CDFsetFileBackward': [None, ctypes.c_long],
+        'computeEPOCH': [ctypes.c_double] + [ctypes.c_long] * 7,
+        'computeEPOCH16': [ctypes.c_double] + [ctypes.c_long] * 10\
+            + [ctypes.POINTER(ctypes.c_double * 2)],
+        'computeTT2000': [ctypes.c_longlong]
+            + [ctypes.c_longlong if _arm32 else ctypes.c_double] * 3,
+        'EPOCH16breakdown': [None, ctypes.c_double * 2]\
+            + [ctypes.POINTER(ctypes.c_long)] * 10,
+        'EPOCHbreakdown': [ctypes.c_long, ctypes.c_double]\
+            + [ctypes.POINTER(ctypes.c_long)] * 7,
+    }
+    """Call signatures for functions in C library. Keyed by function name;
+       values are return type (first element) and then argument types."""
+
     def __init__(self, libpath=None, library=None):
         """Load the CDF C library.
 
@@ -249,49 +287,22 @@ class Library(object):
         else:
             self._library = library
             self.libpath = libpath
-        self._library.CDFlib.restype = ctypes.c_long #commonly used, so set it up here
-        self._library.EPOCHbreakdown.restype = ctypes.c_long
-        self._library.computeEPOCH.restype = ctypes.c_double
-        self._library.computeEPOCH.argtypes = [ctypes.c_long] * 7
-        self._library.computeEPOCH16.restype = ctypes.c_double
-        self._library.computeEPOCH16.argtypes = [ctypes.c_long] * 10 + \
-            [ctypes.POINTER(ctypes.c_double * 2)]
-        if hasattr(self._library, 'CDFsetFileBackward'):
-            self._library.CDFsetFileBackward.restype = None
-            self._library.CDFsetFileBackward.argtypes = [ctypes.c_long]
         #Map old name to the 3.7.1+ name
         if not hasattr(self._library, 'computeTT2000') \
            and hasattr(self._library, 'CDF_TT2000_from_UTC_parts'):
             self._library.computeTT2000 \
                 = self._library.CDF_TT2000_from_UTC_parts
-        if hasattr(self._library, 'computeTT2000'):
-            self._library.computeTT2000.restype = ctypes.c_longlong
-            self._library.computeTT2000.argtypes = \
-                [ctypes.c_double] *9
-        #Map old name to the 3.7.1+ name
         if not hasattr(self._library, 'breakdownTT2000') \
            and hasattr(self._library, 'CDF_TT2000_to_UTC_parts'):
             self._library.breakdownTT2000 \
                 = self._library.CDF_TT2000_to_UTC_parts
-        if hasattr(self._library, 'breakdownTT2000'):
-            self._library.breakdownTT2000.restype = None
-            self._library.breakdownTT2000.argtypes = \
-                [ctypes.c_longlong] + [ctypes.POINTER(ctypes.c_double)] * 9
-        if hasattr(self._library, 'CDF_TT2000_to_UTC_EPOCH'):
-            self._library.CDF_TT2000_to_UTC_EPOCH.restype = ctypes.c_double
-            self._library.CDF_TT2000_to_UTC_EPOCH.argtypes = [ctypes.c_longlong]
-        if hasattr(self._library, 'CDF_TT2000_from_UTC_EPOCH'):
-            self._library.CDF_TT2000_from_UTC_EPOCH.restype = ctypes.c_longlong
-            self._library.CDF_TT2000_from_UTC_EPOCH.argtypes = [ctypes.c_double]
-        if hasattr(self._library, 'CDF_TT2000_to_UTC_EPOCH16'):
-            self._library.CDF_TT2000_to_UTC_EPOCH16.restype = ctypes.c_double
-            self._library.CDF_TT2000_to_UTC_EPOCH16.argtypes = \
-                [ctypes.c_longlong, ctypes.POINTER(ctypes.c_double * 2)]
-        if hasattr(self._library, 'CDF_TT2000_from_UTC_EPOCH16'):
-            self._library.CDF_TT2000_from_UTC_EPOCH16.restype = \
-                ctypes.c_longlong
-            self._library.CDF_TT2000_from_UTC_EPOCH16.argtypes = \
-                [ctypes.POINTER(ctypes.c_double * 2)]
+        for funcname in self._signatures:
+            func = getattr(self._library, funcname, None)
+            if func is None:
+                continue
+            args = self._signatures[funcname]
+            func.restype = args[0]
+            func.argtypes = None if len(args) <= 1 else args[1:]
 
         #Get CDF version information
         ver = ctypes.c_long(0)
@@ -357,48 +368,25 @@ class Library(object):
             del self.numpytypedict[const.CDF_INT8.value]
             del self.cdftypenames[const.CDF_TIME_TT2000.value]
             del self.numpytypedict[const.CDF_TIME_TT2000.value]
-        elif sys.platform.startswith('linux') \
-             and os.uname()[4].startswith('arm') \
-             and hasattr(self._library, 'computeTT2000') \
-             and self._library.computeTT2000(
-                 2010, 1, 1, 0, 0, 0, 0, 0, 0) != 315576066184000000:
-            #TT2000 call failed, so probably need to type-pun
-            #double arguments to variadic functions.
-            #Calling convention for non-variadic functions with floats
-            #is unique, but convention for ints is same as variadic.
-            #So type-pun arguments to integers to force that calling
-            #convention.
+        elif self._arm32:
+            # Type-pun double arguments to variadic functions.
+            # Calling convention for non-variadic functions with floats
+            # is unique, but convention for ints is same as variadic.
             if ctypes.sizeof(ctypes.c_longlong) != \
                ctypes.sizeof(ctypes.c_double):
                 warnings.warn('ARM with unknown type sizes; '
                               'TT2000 functions will not work.')
             else:
-                self._library.computeTT2000.argtypes = \
-                    [ctypes.c_longlong] * 9
-                c_ll_p = ctypes.POINTER(ctypes.c_longlong)
                 if self._library.computeTT2000(
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        2010)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        1)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        1)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        0)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        0)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        0)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        0)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        0)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        0)), c_ll_p).contents) != 315576066184000000:
+                        _cast_ll(2010), _cast_ll(1), _cast_ll(1),
+                        _cast_ll(0), _cast_ll(0), _cast_ll(0),
+                        _cast_ll(0), _cast_ll(0), _cast_ll(0)
+                ) != 315576066184000000:
                     warnings.warn('ARM with unknown calling convention; '
                                   'TT2000 functions will not work.')
                 self.datetime_to_tt2000 = self._datetime_to_tt2000_typepunned
-
+        if self.epoch_to_datetime(63113903999999.984).year != 1999:
+            self.epoch_to_datetime = self._epoch_to_datetime_bad_rounding
         v_epoch16_to_datetime = numpy.frompyfunc(
             self.epoch16_to_datetime, 2, 1)
         self.v_epoch16_to_datetime = \
@@ -465,11 +453,6 @@ class Library(object):
             self.tt2000_to_epoch16 = self._bad_tt2000
             self.v_tt2000_to_epoch16 = self._bad_tt2000
 
-        #Default to V2 CDF
-        self.set_backward(True)
-        # User has not explicitly called set_backward
-        self._explicit_backward = False
-
     @staticmethod
     def _find_lib():
         """
@@ -522,9 +505,16 @@ class Library(object):
         if 'CDF_LIB' in os.environ:
             for p in search_dir(os.environ['CDF_LIB']):
                 yield p
+        if sys.platform == 'win32' and 'CDF_BIN' in os.environ:
+            for p in search_dir(os.environ['CDF_BIN']):
+                yield p
         if 'CDF_BASE' in os.environ:
             for p in search_dir(os.path.join(os.environ['CDF_BASE'], 'lib')):
                 yield p
+            if sys.platform == 'win32':
+                for p in search_dir(
+                        os.path.join(os.environ['CDF_BASE'], 'bin')):
+                    yield p
         ctypespath = ctypes.util.find_library(
             'dllcdf.dll' if sys.platform == 'win32' else 'cdf')
         if ctypespath:
@@ -537,27 +527,33 @@ class Library(object):
         #Finally, defaults places CDF gets installed uner
         #CDF_BASE is usually a subdir of these (with "cdf" in the name)
         #Searched in order given here!
-        cdfdists = { 'win32': ['c:\\CDF Distribution\\', 'c:\\CDF_Distribution\\'],
-                    'darwin': ['/Applications/', '/usr/local/',
-                               os.path.expanduser('~')],
-                    'linux2': ['/usr/local/', os.path.expanduser('~')],
-                    'linux': ['/usr/local/', os.path.expanduser('~')],
-                    }
-        if sys.platform in cdfdists:
-            for cdfdist in cdfdists[sys.platform]:
-                if os.path.isdir(cdfdist):
-                    cand = []
-                    for d in os.listdir(cdfdist):
-                        if d[0:3].lower() == 'cdf':
-                            #checking src in case BUILT but not INSTALLED
-                            for subdir in ['lib', os.path.join('src', 'lib')]:
-                                libdir = os.path.join(cdfdist, d, subdir)
-                                if os.path.isdir(libdir):
-                                    cand.append(libdir)
-                    #Sort reverse, so new versions are first FOR THIS cdfdist
-                    for d in sorted(cand)[::-1]:
-                        for p in search_dir(d):
-                            yield p
+        cdfdists = {
+            'win32': [
+                os.getenv('SystemDrive', 'c:') + root + extra
+                for root in ['', '\\Program Files', '\\Program Files (x86)']
+                for extra in ['\\CDF Distribution\\', '\\CDF_Distribution\\']],
+            'darwin': ['/Applications/', os.path.expanduser('~/Applications/'),
+                       '/Applications/cdf/',
+                       os.path.expanduser('~/Applications/cdf/'),
+                       '/usr/local/', os.path.expanduser('~')],
+            'linux2': ['/usr/local/', os.path.expanduser('~')],
+            'linux': ['/usr/local/', os.path.expanduser('~')],
+        }
+        for cdfdist in cdfdists.get(sys.platform, []):
+            if os.path.isdir(cdfdist):
+                cand = []
+                for d in os.listdir(cdfdist):
+                    if d[0:3].lower() == 'cdf':
+                        #checking src in case BUILT but not INSTALLED
+                        for subdir in ['lib', os.path.join('src', 'lib'),
+                                       'bin']:
+                            libdir = os.path.join(cdfdist, d, subdir)
+                            if os.path.isdir(libdir):
+                                cand.append(libdir)
+                #Sort reverse, so new versions are first FOR THIS cdfdist
+                for d in sorted(cand)[::-1]:
+                    for p in search_dir(d):
+                        yield p
 
     def check_status(self, status, ignore=()):
         """
@@ -647,7 +643,11 @@ class Library(object):
         Set backward compatibility mode for new CDFs
 
         Unless backward compatible mode is set, CDF files created by
-        the version 3 library can not be read by V2.
+        the version 3 library can not be read by V2. pycdf does not
+        set backward compatible mode by default.
+
+        .. versionchanged:: 0.3.0
+           Before 0.3.0, pycdf set backward compatible mode on import.
 
         Parameters
         ==========
@@ -658,8 +658,6 @@ class Library(object):
         ======
         ValueError : if backward=False and underlying CDF library is V2
         """
-        # User has explicitly chosen backward compat or not
-        self._explicit_backward = True
         if self.version[0] < 3:
             if not backward:
                 raise ValueError(
@@ -692,19 +690,54 @@ class Library(object):
         mm = ctypes.c_long(0)
         dd = ctypes.c_long(0)
         hh = ctypes.c_long(0)
-        min = ctypes.c_long(0)
+        mn = ctypes.c_long(0)
         sec = ctypes.c_long(0)
         msec = ctypes.c_long(0)
-        self._library.EPOCHbreakdown(ctypes.c_double(epoch),
-                                     ctypes.byref(yyyy), ctypes.byref(mm),
-                                     ctypes.byref(dd),
-                                     ctypes.byref(hh), ctypes.byref(min),
-                                     ctypes.byref(sec), ctypes.byref(msec))
+        self._library.EPOCHbreakdown(epoch, yyyy, mm, dd, hh, mn, sec, msec)
         if yyyy.value <= 0:
             return datetime.datetime(9999, 12, 13, 23, 59, 59, 999000)
         else:
             return datetime.datetime(yyyy.value, mm.value, dd.value,
-                                     hh.value, min.value, sec.value,
+                                     hh.value, mn.value, sec.value,
+                                     msec.value * 1000)
+
+    def _epoch_to_datetime_bad_rounding(self, epoch):
+        """
+        Converts a CDF epoch value to a datetime
+
+        Version for libraries before CDF 3.8.0.1, which would erroneously
+        convert times near end of day into the next day.
+
+        Parameters
+        ==========
+        epoch : float
+            epoch value from CDF
+
+        Returns
+        =======
+        out : :class:`datetime.datetime`
+            date and time corresponding to epoch. Invalid values are set to
+            usual epoch invalid value, i.e. last moment of year 9999.
+
+        See Also
+        ========
+        v_epoch_to_datetime
+        """
+        yyyy = ctypes.c_long(0)
+        mm = ctypes.c_long(0)
+        dd = ctypes.c_long(0)
+        hh = ctypes.c_long(0)
+        mn = ctypes.c_long(0)
+        sec = ctypes.c_long(0)
+        msec = ctypes.c_long(0)
+        # Truncate to ms inherent EPOCH resolution to avoid rounding bug
+        self._library.EPOCHbreakdown(
+            int(epoch), yyyy, mm, dd, hh, mn, sec, msec)
+        if yyyy.value <= 0:
+            return datetime.datetime(9999, 12, 13, 23, 59, 59, 999000)
+        else:
+            return datetime.datetime(yyyy.value, mm.value, dd.value,
+                                     hh.value, mn.value, sec.value,
                                      msec.value * 1000)
 
     def datetime_to_epoch(self, dt):
@@ -771,32 +804,29 @@ class Library(object):
         mm = ctypes.c_long(0)
         dd = ctypes.c_long(0)
         hh = ctypes.c_long(0)
-        min = ctypes.c_long(0)
+        mn = ctypes.c_long(0)
         sec = ctypes.c_long(0)
         msec = ctypes.c_long(0)
         usec = ctypes.c_long(0)
         nsec = ctypes.c_long(0)
         psec = ctypes.c_long(0)
-        self._library.EPOCH16breakdown((ctypes.c_double * 2)(epoch0, epoch1),
-                                     ctypes.byref(yyyy), ctypes.byref(mm),
-                                     ctypes.byref(dd),
-                                     ctypes.byref(hh), ctypes.byref(min),
-                                     ctypes.byref(sec), ctypes.byref(msec),
-                                     ctypes.byref(usec), ctypes.byref(nsec),
-                                     ctypes.byref(psec))
+        self._library.EPOCH16breakdown(
+            (ctypes.c_double * 2)(epoch0, epoch1),
+            yyyy, mm, dd, hh, mn, sec,
+            msec, usec, nsec, psec)
         if yyyy.value <= 0:
             return datetime.datetime(9999, 12, 13, 23, 59, 59, 999999)
         micro = int(float(msec.value) * 1000 + float(usec.value) +
                     float(nsec.value) / 1000 + float(psec.value) / 1e6 + 0.5)
         if micro < 1000000:
             return datetime.datetime(yyyy.value, mm.value, dd.value,
-                                     hh.value, min.value, sec.value,
+                                     hh.value, mn.value, sec.value,
                                      micro)
         else:
             add_sec = int(micro / 1000000)
             try:
                 return datetime.datetime(yyyy.value, mm.value, dd.value,
-                                         hh.value, min.value, sec.value,
+                                         hh.value, mn.value, sec.value,
                                          micro - add_sec * 1000000) + \
                                          datetime.timedelta(seconds=add_sec)
             except OverflowError:
@@ -950,15 +980,14 @@ class Library(object):
         mm = ctypes.c_double(0)
         dd = ctypes.c_double(0)
         hh = ctypes.c_double(0)
-        min = ctypes.c_double(0)
+        mn = ctypes.c_double(0)
         sec = ctypes.c_double(0)
         msec = ctypes.c_double(0)
         usec = ctypes.c_double(0)
         nsec = ctypes.c_double(0)
         self._library.breakdownTT2000(
-            ctypes.c_longlong(tt2000),
-            ctypes.byref(yyyy), ctypes.byref(mm), ctypes.byref(dd),
-            ctypes.byref(hh), ctypes.byref(min), ctypes.byref(sec),
+            tt2000, yyyy, mm, dd,
+            ctypes.byref(hh), ctypes.byref(mn), ctypes.byref(sec),
             ctypes.byref(msec), ctypes.byref(usec), ctypes.byref(nsec))
         if yyyy.value <= 0:
             return datetime.datetime(9999, 12, 13, 23, 59, 59, 999999)
@@ -966,18 +995,18 @@ class Library(object):
         if sec >= 60:
             return datetime.datetime(
                 int(yyyy.value), int(mm.value), int(dd.value),
-                int(hh.value), int(min.value), 59, 999999)
+                int(hh.value), int(mn.value), 59, 999999)
         micro = int(msec.value * 1000 + usec.value + nsec.value / 1000 + 0.5)
         if micro < 1000000:
             return datetime.datetime(
                 int(yyyy.value), int(mm.value), int(dd.value),
-                int(hh.value), int(min.value), sec, micro)
+                int(hh.value), int(mn.value), sec, micro)
         else:
             add_sec = int(micro / 1000000)
             try:
                 return datetime.datetime(
                     int(yyyy.value), int(mm.value), int(dd.value),
-                    int(hh.value), int(min.value), sec,
+                    int(hh.value), int(mn.value), sec,
                     micro - add_sec * 1000000) + \
                     datetime.timedelta(seconds=add_sec)
             except OverflowError:
@@ -1008,10 +1037,11 @@ class Library(object):
         if dt  == datetime.datetime.max:
             return -2**63
         return self._library.computeTT2000(
-            dt.year, dt.month, dt.day, dt.hour,
-            dt.minute, dt.second,
-            int(dt.microsecond / 1000),
-            dt.microsecond % 1000, 0)
+            dt.year, dt.month, dt.day,
+            ctypes.c_double(dt.hour), ctypes.c_double(dt.minute),
+            ctypes.c_double(dt.second),
+            ctypes.c_double(int(dt.microsecond / 1000)),
+            ctypes.c_double(dt.microsecond % 1000), ctypes.c_double(0))
 
     def _datetime_to_tt2000_typepunned(self, dt):
         """
@@ -1034,31 +1064,16 @@ class Library(object):
         ========
         v_datetime_to_tt2000
         """
-        c_ll_p = ctypes.POINTER(ctypes.c_longlong)
         if dt.tzinfo != None and dt.utcoffset() != None:
             dt = dt - dt.utcoffset()
         dt = dt.replace(tzinfo=None)
         if dt  == datetime.datetime.max:
             return -2**63
         return self._library.computeTT2000(
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        dt.year)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        dt.month)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        dt.day)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        dt.hour)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        dt.minute)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        dt.second)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        dt.microsecond // 1000)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        dt.microsecond % 1000)), c_ll_p).contents,
-                    ctypes.cast(ctypes.pointer(ctypes.c_double(
-                        0)), c_ll_p).contents)
+            _cast_ll(dt.year), _cast_ll(dt.month), _cast_ll(dt.day),
+            _cast_ll(dt.hour), _cast_ll(dt.minute), _cast_ll(dt. second),
+            _cast_ll(dt.microsecond // 1000), _cast_ll(dt.microsecond % 1000),
+            _cast_ll(0))
 
     def epoch_to_tt2000(self, epoch):
         """
@@ -1259,7 +1274,7 @@ def download_library():
         class AppURLopener(u.FancyURLopener):
             version = spacepy.config['user_agent']
         u._urlopener = AppURLopener()
-    baseurl = 'https://spdf.sci.gsfc.nasa.gov/pub/software/cdf/dist/'
+    baseurl = 'https://spdf.gsfc.nasa.gov/pub/software/cdf/dist/'
     url = u.urlopen(baseurl)
     listing = url.read()
     url.close()
@@ -1471,8 +1486,11 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
     readonly : bool
         Open the CDF read-only. Default True if opening an
         existing CDF; False if creating a new one. A readonly
-        CDF with many variables may be slow to close. See
-        :meth:`readonly`.
+        CDF with many variables may be slow to close on CDF library
+        versions before 3.8.1. See :meth:`readonly`.
+    encoding : str, optional
+        Text encoding to use when reading and writing strings. Default
+        ``'utf-8'``.
 
     Raises
     ======
@@ -1594,11 +1612,11 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
     When CDFs are created in this way, they are opened read-write, see
     :py:meth:`readonly` to change.
 
-    By default, new CDFs (without a master) are created in version 2
-    (backward-compatible) format. To create a version 3 CDF, use
+    By default, new CDFs (without a master) are created in version 3
+    format. To create a version 2 (backward-compatible) CDF, use
     :meth:`Library.set_backward`:
 
-        >>> pycdf.lib.set_backward(False)
+        >>> pycdf.lib.set_backward(True)
         >>> cdffile = pycdf.CDF('cdf_filename.cdf', '')
 
     Add variables by direct assignment, which will automatically set type
@@ -1697,7 +1715,8 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
     .. automethod:: version
 
     """
-    def __init__(self, pathname, masterpath=None, create=None, readonly=None):
+    def __init__(self, pathname, masterpath=None, create=None, readonly=None,
+                 encoding='utf-8'):
         """Open or create a CDF file.
 
         Parameters
@@ -1714,6 +1733,9 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         readonly : bool
             Open the CDF read-only. Default True if opening an
             existing CDF; False if creating a new one.
+        encoding : str, optional
+            Text encoding to use when reading and writing strings.
+            Default ``'utf-8'``.
 
         Raises
         ======
@@ -1744,12 +1766,15 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
                 'pathname must be string-like: {0}'.format(pathname))
         self._handle = ctypes.c_void_p(None)
         self._opened = False
+        self.encoding = encoding
         if masterpath is None and not create:
             self._open(True if readonly is None else readonly)
         elif masterpath:
             self._from_master(masterpath.encode())
+            self._check_enc()
         else:
             self._create()
+            self._check_enc()
         lib.call(const.SELECT_, const.CDF_zMODE_, ctypes.c_long(2))
         self._attrlistref = weakref.ref(gAttrList(self))
         self.backward = self.version()[0] < 3
@@ -1929,6 +1954,8 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         self._opened = True
         if readonly: #Default is RW
             self.readonly(readonly)
+        else:
+            self._check_enc()
 
     def _create(self):
         """Creates (and opens) a new CDF file
@@ -1945,12 +1972,6 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
             Not intended for direct call; pass parameters to
             :py:class:`pycdf.CDF` constructor.
         """
-        if not lib._explicit_backward:
-            warnings.warn(
-                'spacepy.pycdf.lib.set_backward not called;'
-                ' making backward-compatible CDF.'
-                ' This default will change in the future.',
-                DeprecationWarning)
         lib.call(const.CREATE_, const.CDF_, self.pathname, ctypes.c_long(0),
                               (ctypes.c_long * 1)(0), ctypes.byref(self._handle))
         self._opened = True
@@ -1979,6 +2000,13 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
             raise CDFError(const.CDF_EXISTS)
         shutil.copy2(master_path, self.pathname)
         self._open(False)
+
+    def _check_enc(self):
+        """Check encoding and raise warning if nonstandard"""
+        if self.encoding not in ('ascii', 'utf-8'):
+            warnings.warn(
+                'Opening CDF for write with nonstandard encoding {}'.format(
+                    self.encoding))
 
     @classmethod
     def from_data(cls, filename, sd):
@@ -2111,12 +2139,13 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         will have no effect.
 
         .. note::
-            Closing a CDF that has been opened readonly, or setting readonly
+            Before version 3.8.1 of the NASA CDF library,
+            closing a CDF that has been opened readonly, or setting readonly
             False, may take a substantial amount of time if there are many
             variables in the CDF, as a (potentially large) cache needs to
-            be cleared. Consider specifying ``readonly=False`` when opening
-            the file if this is an issue. However, this may make some reading
-            operations slower.
+            be cleared. If upgrading to a newer CDF library is not possible,
+            specifying ``readonly=False`` when opening the file is an option.
+            However, this may make some reading operations slower.
 
         Other Parameters
         ================
@@ -2139,6 +2168,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         elif ro == False:
             self._call(const.SELECT_, const.CDF_READONLY_MODE_,
                        const.READONLYoff)
+            self._check_enc()
         mode = ctypes.c_long(0)
         self._call(const.CONFIRM_, const.CDF_READONLY_MODE_,
                    ctypes.byref(mode))
@@ -2243,6 +2273,13 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
             Either ``data`` or ``type`` must be specified. If type is not
             specified, it is guessed from ``data``.
 
+        This creates a new variable. If using a "master CDF" with
+        existing variables and no records, simply assign the new data
+        to the variable, or the "whole variable" slice:
+
+            >>> cdf['ExistingVariable'] = data
+            >>> cdf['ExistingVariable'][...] = data
+
         Parameters
         ==========
         name : str
@@ -2305,14 +2342,6 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         ValueError : if neither data nor sufficient typing information
                      is provided.
 
-        Warns
-        =====
-        DeprecationWarning
-            if no type is provided and data is datetime, warning that
-            the default will change in the future.
-
-            .. versionadded:: 0.2.3
-
         Notes
         =====
         Any given data may be representable by a range of CDF types; if
@@ -2322,8 +2351,8 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
             #. If input data is a numpy array, match the type of that array
             #. Proper kind (numerical, string, time)
             #. Proper range (stores highest and lowest number provided)
-            #. Sufficient resolution (EPOCH16 required if datetime has
-               microseconds or below.)
+            #. Sufficient resolution (EPOCH16 or TIME_TT2000 required if datetime
+               has microseconds or below.)
 
         If more than one value satisfies the requirements, types are returned
         in preferred order:
@@ -2334,12 +2363,14 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
             #. signed type first, then
             #. specifically-named (CDF_BYTE) vs. generically named (CDF_INT1)
 
-        So for example, EPOCH_16 is preferred over EPOCH if ``data`` specifies
+        TIME_TT2000 is always the preferred time type if it is available.
+        Otherwise, EPOCH_16 is preferred over EPOCH if ``data`` specifies
         below the millisecond level (rule 1), but otherwise EPOCH is preferred
         (rule 2).
 
-        In the future, CDF_TIME_TT2000 will be the preferred EPOCH type if
-        not specified.
+        .. versionchanged:: 0.3.0
+           Before 0.3.0, EPOCH or EPOCH_16 were used if not specified. Now
+           TIME_TT2000 is always the preferred type.
 
         For floats, four-byte is preferred unless eight-byte is required:
 
@@ -2390,7 +2421,8 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
                 n_elements = 1
         else:
             #This supports getting the type straight from a VarCopy
-            (guess_dims, guess_types, guess_elements) = _Hyperslice.types(data)
+            (guess_dims, guess_types, guess_elements)\
+                = _Hyperslice.types(data, encoding=self.encoding)
             if dims is None:
                 if recVary:
                     if guess_dims == ():
@@ -2402,14 +2434,9 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
                     dims = guess_dims
             if type is None:
                 type = guess_types[0]
-                if type == const.CDF_EPOCH16.value and self.backward:
+                if type in (const.CDF_EPOCH16.value,
+                            const.CDF_TIME_TT2000.value) and self.backward:
                     type = const.CDF_EPOCH
-                if type in lib.timetypes and len(guess_types) > 1:
-                    warnings.warn(
-                        'No type specified for time input; assuming {}. This'
-                        ' will change to TT2000 in the future, on systems'
-                        ' which support it.'.format(lib.cdftypenames[type]),
-                        DeprecationWarning)
             if n_elements is None:
                 n_elements = guess_elements
         if dimVarys is None:
@@ -2866,6 +2893,13 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
     reading an NRV scalar variable with no data will return an empty
     one-dimensional array. This is really not recommended.
 
+    Variables with no records (RV) or no data (NRV) are considered to be
+    "false"; those with records or data written are considered to be
+    "true", allowing for an easy check of data existence:
+
+    >>> if testcdf['variable']:
+    >>>     # do things that require data to exist
+
     As a list type, variables are also `iterable
     <http://docs.python.org/tutorial/classes.html#iterators>`_; iterating
     over a variable returns a single complete record at a time.
@@ -3228,33 +3262,34 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
             `data` converted, including time conversions
         """
         cdf_type = self.type()
+        np_type = self._np_type()
         if cdf_type == const.CDF_EPOCH16.value:
             if not self._raw:
                 try:
                     data = lib.v_datetime_to_epoch16(data)
                 except AttributeError:
                     pass
-            data = numpy.require(data, requirements=('C', 'A', 'W'),
-                                 dtype=numpy.float64)
+            np_type = numpy.float64
         elif cdf_type == const.CDF_EPOCH.value:
             if not self._raw:
                 try:
                     data = lib.v_datetime_to_epoch(data)
                 except AttributeError:
                     pass
-            data = numpy.require(data, requirements=('C', 'A', 'W'),
-                                 dtype=numpy.float64)
         elif cdf_type == const.CDF_TIME_TT2000.value:
             if not self._raw:
                 try:
                     data = lib.v_datetime_to_tt2000(data)
                 except AttributeError:
                     pass
-            data = numpy.require(data, requirements=('C', 'A', 'W'),
-                                 dtype=numpy.int64)
-        else:
-             data = numpy.require(data, requirements=('C', 'A', 'W'),
-                                  dtype=self._np_type())
+        elif cdf_type in (const.CDF_UCHAR.value, const.CDF_CHAR.value):
+            if not self._raw:
+                data = numpy.asanyarray(data)
+                if data.dtype.kind == 'U':
+                    data = numpy.char.encode(
+                        data, encoding=self.cdf_file.encoding)
+        data = numpy.require(data, requirements=('C', 'A', 'W'),
+                             dtype=np_type)
         return data
 
     def __setitem__(self, key, data):
@@ -3729,17 +3764,6 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         nelems = ctypes.c_long(0)
         self._call(const.GET_, const.zVAR_NUMELEMS_, ctypes.byref(nelems))
         return nelems.value
-
-    def _nelems(self):
-        """Number of elements for each value in this variable
-
-        .. deprecated:: 0.2.2
-            This method will be removed in the future. Use the public
-            interface `nelems` instead.
-        """
-        warnings.warn("_nelems is deprecated and will be removed. Use nelems.",
-                      DeprecationWarning)
-        return self.nelems()
 
     def name(self):
         """
@@ -4264,8 +4288,10 @@ class _Hyperslice(object):
             if cdftype in (const.CDF_CHAR.value, const.CDF_UCHAR.value) and \
                     str != bytes:
                 dt = numpy.dtype('U{0}'.format(result.dtype.itemsize))
-                result = numpy.require(numpy.char.array(result).decode(),
-                                       dtype=dt)
+                result = numpy.require(
+                    numpy.char.array(result).decode(
+                        encoding=self.zvar.cdf_file.encoding, errors='replace'),
+                    dtype=dt)
             elif cdftype == const.CDF_EPOCH.value:
                 result = lib.v_epoch_to_datetime(result)
             elif cdftype == const.CDF_EPOCH16.value:
@@ -4385,20 +4411,30 @@ class _Hyperslice(object):
 
     @staticmethod
     def check_well_formed(data):
-        """Checks if input data is well-formed, regular array"""
-        d = numpy.asanyarray(data)
+        """Checks if input data is well-formed, regular array
+
+        Returns
+        -------
+        :class:`~numpy.ndarray`
+            The input data as a well-formed array; may be the input
+            data exactly.
+        """
+        msg = 'Data must be well-formed, regular array of number, '\
+              'string, or datetime'
+        try:
+            d = numpy.asanyarray(data)
+        except ValueError:
+            raise ValueError(msg)
+        # In a future numpy, the case tested below will raise ValueError,
+        # so can remove entire if block.
         if d.dtype == object: #this is probably going to be bad
             if d.shape != () and not len(d):
                 #Completely empty, so "well-formed" enough
-                return
-            try:
-                len(d.flat[0])
-            except TypeError: #at least it's not a list
-                pass
-            else:
-                raise ValueError(
-                    'Data must be well-formed, regular array of number, '
-                    'string, or datetime')
+                return d
+            if numpy.array(d.flat[0]).shape != ():
+                # Sequence-like, so we know it's ragged
+                raise ValueError(msg)
+        return d
 
     @staticmethod
     def dimensions(data):
@@ -4410,19 +4446,17 @@ class _Hyperslice(object):
         @rtype: list of int
         @raise ValueError: if L{data} has irregular dimensions
         """
-        d = numpy.asanyarray(data)
-        _Hyperslice.check_well_formed(d)
-        return d.shape
+        return _Hyperslice.check_well_formed(data).shape
 
     @staticmethod
-    def types(data, backward=False):
+    def types(data, backward=False, encoding='utf-8'):
         """Find dimensions and valid types of a nested list-of-lists
 
         Any given data may be representable by a range of CDF types; infer
         the CDF types which can represent this data. This breaks down to:
           1. Proper kind (numerical, string, time)
           2. Proper range (stores highest and lowest number)
-          3. Sufficient resolution (EPOCH16 required if datetime has
+          3. Sufficient resolution (EPOCH16 or TT2000 required if datetime has
              microseconds or below.)
 
         If more than one value satisfies the requirements, types are returned
@@ -4434,7 +4468,7 @@ class _Hyperslice(object):
           5. specifically-named (CDF_BYTE) vs. generically named (CDF_INT1)
         So for example, EPOCH_16 is preferred over EPOCH if L{data} specifies
         below the millisecond level (rule 1), but otherwise EPOCH is preferred
-        (rule 2).
+        (rule 2). TIME_TT2000 is always preferred as of 0.3.0.
 
         For floats, four-byte is preferred unless eight-byte is required:
           1. absolute values between 0 and 3e-39
@@ -4447,35 +4481,40 @@ class _Hyperslice(object):
         @type data: list (of lists)
         @param backward: limit to pre-CDF3 types
         @type backward: bool
+        @param encoding: Encoding to use for Unicode input, default utf-8
+        @type backward: str
         @return: dimensions of L{data}, in order outside-in;
                  CDF types which can represent this data;
                  number of elements required (i.e. length of longest string)
         @rtype: 3-tuple of lists ([int], [ctypes.c_long], [int])
         @raise ValueError: if L{data} has irregular dimensions
         """
-        d = numpy.asanyarray(data)
+        d = _Hyperslice.check_well_formed(data)
         dims = d.shape
         elements = 1
         types = []
 
-        _Hyperslice.check_well_formed(d)
         if d.dtype.kind in ('S', 'U'): #it's a string
             types = [const.CDF_CHAR, const.CDF_UCHAR]
+            # Length of string from type (may be longer than contents)
             elements = d.dtype.itemsize
-            if d.dtype.kind == 'U': #UTF-8 uses 4 bytes per
-                elements //= 4
+            if d.dtype.kind == 'U':
+                # Big enough for contents (bytes/char are encoding-specific)
+                elements = max(
+                    elements // 4, # numpy stores as 4-byte
+                    numpy.char.encode(d, encoding=encoding).dtype.itemsize)
         elif d.size and hasattr(numpy.ma.getdata(d).flat[0], 'microsecond'):
             if max((dt.microsecond % 1000 for dt in d.flat)) > 0:
-                types = [const.CDF_EPOCH16, const.CDF_EPOCH,
-                         const.CDF_TIME_TT2000]
+                types = [const.CDF_TIME_TT2000, const.CDF_EPOCH16,
+                         const.CDF_EPOCH]
             else:
-                types = [const.CDF_EPOCH, const.CDF_EPOCH16,
-                         const.CDF_TIME_TT2000]
+                types = [const.CDF_TIME_TT2000, const.CDF_EPOCH,
+                         const.CDF_EPOCH16]
             if backward:
                 del types[types.index(const.CDF_EPOCH16)]
-                del types[-1]
+                del types[0]
             elif not lib.supports_int8:
-                del types[-1]
+                del types[0]
         elif d is data or isinstance(data, numpy.generic):
             #numpy array came in, use its type (or byte-swapped)
             types = [k for k in lib.numpytypedict
@@ -4844,7 +4883,8 @@ class Attr(MutableSequence):
                 typelist[i] = (None, None, None)
                 continue
             (dims, types, elements) = _Hyperslice.types(
-                datum, backward=self._cdf_file.backward)
+                datum, backward=self._cdf_file.backward,
+                encoding=self._cdf_file.encoding)
             if len(types) <= 0:
                 raise ValueError('Cannot find a matching CDF type.')
             if len(dims) > 1:
@@ -4865,12 +4905,6 @@ class Attr(MutableSequence):
                     entry_type = vartype
             if entry_type is None:
                 entry_type = types[0]
-                if entry_type in lib.timetypes and len(types) > 1:
-                    warnings.warn(
-                        'Assuming {} for time input. This will change to'
-                        ' TT2000 in the future, on systems which support it.'
-                        .format(lib.cdftypenames[entry_type]),
-                        DeprecationWarning)
             if not entry_type in lib.numpytypedict:
                 raise ValueError('Cannot find a matching numpy type.')
             typelist.append((dims, entry_type, elements))
@@ -5229,7 +5263,8 @@ class Attr(MutableSequence):
             if str == bytes or self._raw: #Py2k, leave as bytes
                 result = bytes(buff)
             else: #Py3k, make unicode
-                result = str(numpy.char.array(buff).decode())
+                result = str(numpy.char.array(buff).decode(
+                    encoding=self._cdf_file.encoding, errors='replace'))
         else:
             if not self._raw:
                 if cdftype == const.CDF_EPOCH.value:
@@ -5261,6 +5296,11 @@ class Attr(MutableSequence):
         """
         n_write = 1 if len(dims) == 0 else dims[0]
         if cdf_type in (const.CDF_CHAR.value, const.CDF_UCHAR.value):
+            if not self._raw:
+                data = numpy.asanyarray(data)
+                if data.dtype.kind == 'U':
+                    data = numpy.char.encode(
+                        data, encoding=self._cdf_file.encoding)
             data = numpy.require(data, requirements=('C', 'A', 'W'),
                                  dtype=numpy.dtype('S' + str(elements)))
             n_write = elements
@@ -5455,13 +5495,11 @@ class AttrList(MutableMapping):
 
         ~AttrList.clone
         ~AttrList.copy
-        ~AttrList.from_dict
         ~AttrList.new
         ~AttrList.rename
     
     .. automethod:: clone
     .. automethod:: copy
-    .. automethod:: from_dict
     .. automethod:: new
     .. automethod:: rename
     """
@@ -5687,28 +5725,6 @@ class AttrList(MutableMapping):
             the new name of the attribute
         """
         AttrList.__getitem__(self, old_name).rename(new_name)
-
-    def from_dict(self, in_dict):
-        """
-        Fill this list of attributes from a dictionary
-
-        .. deprecated:: 0.1.5
-           Use :meth:`~spacepy.pycdf.AttrList.clone` instead; it supports
-           cloning from dictionaries.
-
-        Parameters
-        ==========
-        in_dict : dict
-            Attribute list is populated entirely from this dictionary;
-            all existing attributes are deleted.
-        """
-        warnings.warn("from_dict is deprecated and will be removed. Use clone.",
-                      DeprecationWarning)
-        for k in in_dict:
-            self[k] = in_dict[k]
-        for k in list(self):
-            if not k in in_dict:
-                del self[k]
 
     def _clone_attr(self, master, name, new_name=None):
         """Clones a single attribute from one in this list or another

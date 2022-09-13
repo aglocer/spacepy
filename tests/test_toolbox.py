@@ -136,36 +136,6 @@ class SimpleFunctionTests(unittest.TestCase):
         dat = [5, 1, 3, -1]
         self.assertEqual([-1, 1, 3, 5], tb.human_sort(dat))
 
-    def test_quaternionDeprecation(self):
-        """Make sure deprecated quaternion functions work"""
-        with spacepy_testing.assertWarns(
-                self, 'always', r'moved to spacepy\.coordinates',
-                DeprecationWarning, r'spacepy'):
-            tst = tb.quaternionNormalize([0.707, 0, 0.707, 0.2])
-        numpy.testing.assert_array_almost_equal(
-            [0.693,  0.,  0.693,  0.196], tst, decimal=2)
-
-        with spacepy_testing.assertWarns(
-                self, 'always', r'moved to spacepy\.coordinates',
-                DeprecationWarning, r'spacepy'):
-            tst = tb.quaternionRotateVector([0.7071, 0, 0, 0.7071],
-                                            [0, 1, 0])
-        numpy.testing.assert_array_almost_equal(
-            [0, 0, 1], tst, decimal=5)
-
-        with spacepy_testing.assertWarns(
-                self, 'always', r'moved to spacepy\.coordinates',
-                DeprecationWarning, r'spacepy'):
-            tst = tb.quaternionMultiply([1., 0, 0, 0],
-                                        [0., 0, 0, 1], scalarPos='first')
-        numpy.testing.assert_array_equal([0, 0, 0, 1], tst)
-
-        with spacepy_testing.assertWarns(
-                self, 'always', r'moved to spacepy\.coordinates',
-                DeprecationWarning, r'spacepy'):
-            tst = tb.quaternionConjugate([.707, 0, .707, 0.2])
-        numpy.testing.assert_array_equal([-.707, 0, -.707, 0.2], tst)
-
     def test_indsFromXrange(self):
         """indsFromXrange should have known result"""
         foo = xrange(23, 39)
@@ -206,7 +176,7 @@ class SimpleFunctionTests(unittest.TestCase):
         """getNamedPath should return None if directory does not exist"""
         import string, random
         len_fn = 16 #should be exceedingly unlikely to exist...
-        dname = ''.join(random.choice(string.ascii_uppercase + 
+        dname = ''.join(random.choice(string.ascii_uppercase +
                         string.digits) for _ in range(len_fn))
         res = tb.getNamedPath(dname)
         self.assertTrue(res is None)
@@ -283,17 +253,18 @@ class SimpleFunctionTests(unittest.TestCase):
 
     def test_interpol_baddata(self):
         """interpol should give known results in presence of fill values"""
-        ans = array([ 0.5,  1.5,  2.5,  3.5,  4.5])
+        ans = array([0.5, 1.5, 2.5, 3.5, 4.5])
         x = numpy.arange(10)
         y = numpy.arange(10)
-        numpy.testing.assert_equal(ans, tb.interpol(numpy.arange(5)+0.5, x, y))
+        numpy.testing.assert_almost_equal(ans, tb.interpol(numpy.arange(5)+0.5, x, y))
         # now test with baddata
         ans = numpy.ma.masked_array([0.5, 1.5, 2.5, 3.5, 4.5],
-            mask = [False,  True,  True, False, False], fill_value = 1e+20)
-        numpy.testing.assert_equal(ans, tb.interpol(numpy.arange(5)+0.5, x, y, baddata=2))
-        #test with baddata at end of array
+                                    mask=[False, True, True, False, False],
+                                    fill_value=1e+20)
+        numpy.testing.assert_almost_equal(ans, tb.interpol(numpy.arange(5)+0.5, x, y, baddata=2))
+        # test with baddata at end of array
         ans = array([1.0, 9.0])
-        numpy.testing.assert_equal(ans, tb.interpol([-1,12], x, y, baddata=0))
+        numpy.testing.assert_almost_equal(ans, tb.interpol([-1, 12], x, y, baddata=0))
 
     def test_interpol_keywords(self):
         """Interpol should give known results with hour and lon keyword wrapping"""
@@ -301,20 +272,21 @@ class SimpleFunctionTests(unittest.TestCase):
         y = list(range(24))*2
         x = list(range(len(y)))
         real_ans = numpy.ma.masked_array([1.5, 10.5, 23.5],
-            mask = False, fill_value = 1e+20)
-        numpy.testing.assert_equal(real_ans, tb.interpol([1.5, 10.5, 23.5], x, y, wrap='hour'))
+                                         mask=False,
+                                         fill_value=1e+20)
+        numpy.testing.assert_almost_equal(real_ans, tb.interpol([1.5, 10.5, 23.5], x, y, wrap='hour'))
         real_ans = numpy.ma.masked_array([1.5, 10.5, 1.5],
-            mask = False, fill_value = 1e+20)
-        numpy.testing.assert_equal(real_ans, tb.interpol([1.5, 10.5, 1.5], x, y)) # as a regression don't need wrap
+                                         mask=False, fill_value=1e+20)
+        numpy.testing.assert_almost_equal(real_ans, tb.interpol([1.5, 10.5, 1.5], x, y))  # as a regression don't need wrap
         # test wrap lon
         y = list(range(360))*2
         x = list(range(len(y)))
         real_ans = numpy.ma.masked_array([1.5, 10.5, 359.5],
-            mask = False, fill_value = 1e+20)
-        numpy.testing.assert_equal(real_ans, tb.interpol([1.5, 10.5, 359.5], x, y, wrap='lon'))
+                                         mask=False, fill_value=1e+20)
+        numpy.testing.assert_almost_equal(real_ans, tb.interpol([1.5, 10.5, 359.5], x, y, wrap='lon'))
         real_ans = numpy.ma.masked_array([1.5, 10.5, 10.5],
-            mask = False, fill_value = 1e+20)
-        numpy.testing.assert_equal(real_ans, tb.interpol([1.5, 10.5, 370.5], x, y)) # as a regression don't need wrap
+                                         mask=False, fill_value=1e+20)
+        numpy.testing.assert_almost_equal(real_ans, tb.interpol([1.5, 10.5, 370.5], x, y)) # as a regression don't need wrap
 
     def test_interpol_arb(self):
         """Interpol should give known results for arbitrary float/int wrapping"""
@@ -332,8 +304,8 @@ class SimpleFunctionTests(unittest.TestCase):
         y = list(range(360))*2
         x = list(range(len(y)))
         real_ans = numpy.ma.masked_array([1.5, 10.5, 359.5],
-            mask = False, fill_value = 1e+20)
-        numpy.testing.assert_equal(real_ans, tb.interpol([1.5, 10.5, 359.5], x, y, wrap=360.0))
+                                         mask=False, fill_value=1e+20)
+        numpy.testing.assert_almost_equal(real_ans, tb.interpol([1.5, 10.5, 359.5], x, y, wrap=360.0))
 
     def test_normalize(self):
         """normalize should give known results, default range"""
@@ -353,33 +325,6 @@ class SimpleFunctionTests(unittest.TestCase):
                                                                                    low=1, high=11))
         numpy.testing.assert_array_almost_equal(array([1.0, 6.0, numpy.nan, 11.0]), tb.normalize(array([1,2,numpy.nan, 3,]),
                                                                                     low=1, high=11))
-
-    def testfeq_equal(self):
-        """feq should return true when they are equal"""
-        val1 = 1.1234
-        val2 = 1.1235
-        with spacepy_testing.assertWarns(self, 'always', r'use numpy\.isclose',
-                                         DeprecationWarning, r'spacepy'):
-            self.assertTrue(tb.feq(val1, val2, 0.0001))
-        with spacepy_testing.assertWarns(self, 'always', r'use numpy\.isclose',
-                                         DeprecationWarning, r'spacepy'):
-            numpy.testing.assert_array_equal(
-                [False, True, False, False],
-                tb.feq([1., 2., 3., 4.],
-                       [1.25, 2.05, 2.2, 500.1],
-                       0.1)
-            )
-
-    def testfeq_notequal(self):
-        """feq should return false when they are not equal"""
-        val1 = 1.1234
-        val2 = 1.1235
-        with spacepy_testing.assertWarns(self, 'always', r'use numpy\.isclose',
-                                         DeprecationWarning, r'spacepy'):
-            self.assertTrue(tb.feq(val1, val2, 0.0001))
-        with spacepy_testing.assertWarns(self, 'always', r'use numpy\.isclose',
-                                         DeprecationWarning, r'spacepy'):
-            self.assertFalse(tb.feq(val1, val2, 0.000005))
 
     def test_medAbsDev(self):
         """medAbsDev should return a known range for given random input"""
@@ -831,6 +776,24 @@ class TBTimeFunctionTests(unittest.TestCase):
                      for val in range(-20, 20)]
         self.dt_b2 = [dt1 + datetime.timedelta(hours=val)
                      for val in range(-20, -2)]
+        # random.sample(list(range(100)), 100)
+        self.dt_a_shuf = [
+            dt1 + datetime.timedelta(hours=val)
+            for val in
+            [86, 75, 53, 74, 35, 57, 63, 84, 82, 89, 45, 10, 41, 78, 14, 62, 98,
+             80, 42, 24, 31,  2, 34, 85, 28, 47, 21, 81, 54,  7, 12, 18, 83,  5,
+             9,  3, 15, 40, 69, 38, 97, 36, 70, 25, 66, 23, 59, 94, 99, 60,  1,
+             61, 11, 90, 52, 30, 13, 64, 49, 77, 27,  6, 16,  4, 76, 58, 19, 22,
+             39, 55, 87, 37, 95, 29, 33, 72, 32, 48, 50,  8, 96, 93, 44, 73, 26,
+             71, 88, 51, 79, 17, 20, 92, 68, 65, 91, 46,  0, 67, 56, 43]]
+        # random.sample(list(range(-20, 20)), 40)
+        self.dt_b_shuf = [
+            dt1 + datetime.timedelta(hours=val)
+            for val in
+            [  2,   4,  -4, -11,  15, -20,   9, -15,   1,   3, -19,  -3, -12,
+             -16, -13,  18,  -5,  -9,  -1,  16,  19,  -2,   6,   0,  -8,  11,
+             -14, -10,  13,  14,  17, -17,  12,  -6,  -7,   5,   7,   8, -18,
+             10]]
 
     def tearDown(self):
         super(TBTimeFunctionTests, self).tearDown()
@@ -847,14 +810,11 @@ class TBTimeFunctionTests(unittest.TestCase):
 
     def test_tOverlap_random(self):
         """Shuffle input before calling tOverlap"""
-        real_ans = ([1, 5, 6, 10, 15, 16, 18, 24, 29, 30, 43,
-                     46, 47, 51, 53, 55, 56, 64, 67, 74],
-                    [1, 2, 6, 7, 10, 12, 13, 14, 15, 17, 18,
-                     19, 24, 27, 28, 30, 32, 35, 37, 38])
-        random.seed(0)
-        random.shuffle(self.dt_a, lambda:round(random.random(), 9))
-        random.shuffle(self.dt_b, lambda:round(random.random(), 9))
-        ans = tb.tOverlap(self.dt_a, self.dt_b)
+        real_ans = ([[11, 14, 21, 29, 30, 31, 33, 34, 35, 36, 50, 52,
+                      56, 61, 62, 63, 66, 79, 89, 96],
+                     [ 0,  1,  4,  6,  8,  9, 15, 19, 20, 22, 23, 25,
+                       28, 29, 30, 32, 35, 36, 37, 39]])
+        ans = tb.tOverlap(self.dt_a_shuf, self.dt_b_shuf)
         numpy.testing.assert_array_equal(real_ans, ans)
 
     def test_tOverlapHalf(self):
@@ -866,13 +826,9 @@ class TBTimeFunctionTests(unittest.TestCase):
 
     def test_tOverlapHalf_random(self):
         """Shuffle input before calling tOverlapHalf"""
-        real_ans = [1, 2, 6, 7, 10, 12, 13, 14, 15, 17, 18,
-                     19, 24, 27, 28, 30, 32, 35, 37, 38]
-        random.seed(0)
-        #Cut down the python3 rng to the same precision as python2
-        random.shuffle(self.dt_a, lambda:round(random.random(), 9))
-        random.shuffle(self.dt_b, lambda:round(random.random(), 9))
-        ans = tb.tOverlapHalf(self.dt_a, self.dt_b)
+        real_ans = ([0, 1, 4, 6, 8, 9, 15, 19, 20, 22, 23, 25, 28,
+                    29, 30, 32, 35, 36, 37, 39])
+        ans = tb.tOverlapHalf(self.dt_a_shuf, self.dt_b_shuf)
         self.assertEqual(real_ans, ans)
 
     def test_tOverlapSorted(self):
@@ -1162,7 +1118,7 @@ class TBTimeFunctionTests(unittest.TestCase):
                       datetime.datetime(2001, 1, 5, 12, 0)]
             numpy.testing.assert_almost_equal(od_ans, outdata)
             self.assertEqual(ot_ans, outtime)
-            
+
     def test_windowMeanInputs(self):
         """windowMean does some input checking (regression)"""
         wsize = datetime.timedelta(days=1)

@@ -28,6 +28,7 @@ __all__ = ['TestParseFileTime', 'TestIdlFile', 'TestRim', 'TestBats2d',
            'TestMagGrid', 'TestSatOrbit', 'TestVirtSat', 'TestImfInput',
            'TestExtraction', 'TestProbeIdlFile']
 
+
 class TestParseFileTime(unittest.TestCase):
     '''
     Test the parse_filename_time function, which attempts to extract
@@ -35,7 +36,7 @@ class TestParseFileTime(unittest.TestCase):
     '''
 
     from datetime import datetime as dt
-    
+
     files = ['mag_grid_e20130924-232600.out',
              'y=0_mhd_1_e20130924-220500-054.out',
              'y=0_mhd_2_t00001430_n00031073.out',
@@ -48,14 +49,14 @@ class TestParseFileTime(unittest.TestCase):
              ]
     iters = [None, None, 31073, 249620, None, 1500, None, [1500, 1889]]
     times = [None, None, 870, 18000, None, None, None, None]
-    dates = [dt(2013,9,24,23,26,0), dt(2013,9,24,22, 5,0),
+    dates = [dt(2013, 9, 24, 23, 26, 0), dt(2013, 9, 24, 22, 5, 0),
              None, None, None, dt(2014, 4, 10, 0, 0),
-             [dt(2014,4,10,0,0,0), dt(2014,4,10,0,3,0)], None]
+             [dt(2014, 4, 10, 0, 0, 0), dt(2014, 4, 10, 0, 3, 0)], None]
 
     def testParse(self):
         from spacepy.pybats import parse_filename_time
         for f, d, t, i in zip(self.files, self.dates, self.times, self.iters):
-            self.assertEqual( parse_filename_time(f), (i,t,d) )
+            self.assertEqual(parse_filename_time(f), (i, t, d))
 
 class TestProbeIdlFile(unittest.TestCase):
     '''
@@ -63,11 +64,11 @@ class TestProbeIdlFile(unittest.TestCase):
     different compatible files.
     '''
 
-    filelist = [os.path.join(spacepy_testing.datadir, 'pybats_test', 'y0_binary.out'),
+    filelist = [os.path.join(spacepy_testing.datadir, 'pybats_test', 'y=0_mhd_1_e20140410-000050.out'),
                 os.path.join(spacepy_testing.datadir, 'pybats_test', 'y0_ascii.out'),
                 os.path.join(spacepy_testing.datadir, 'pybats_test', 'mag_grid_binary.out'),
                 os.path.join(spacepy_testing.datadir, 'pybats_test', 'mag_grid_ascii.out')]
-    
+
     knownResponses = [('bin', '<', np.dtype('int32'), np.dtype('float32')),
                       ('asc', False, False, False),
                       ('bin', '<', np.dtype('int32'), np.dtype('float64')),
@@ -88,23 +89,29 @@ class TestScanBinHeader(unittest.TestCase):
     '''
 
     # Files that have a single frame:
-    files_single = [os.path.join(spacepy_testing.datadir, 'pybats_test', 'y0_binary.out'),
-                    os.path.join(spacepy_testing.datadir, 'pybats_test', 'mag_grid_binary.out')]
+    files_single = [os.path.join(spacepy_testing.datadir, 'pybats_test',
+                                 'y=0_mhd_1_e20140410-000050.out'),
+                    os.path.join(spacepy_testing.datadir, 'pybats_test',
+                                 'mag_grid_binary.out')]
     # File that has multiple frames:
     file_multi = os.path.join(spacepy_testing.datadir, 'pybats_test',
                               'y=0_mhd_1_e20140410-000000-000_20140410-000200-000.outs')
-    
+
     # Responses from single-frame files:
-    knownSingle = [{'iter':68, 'runtime':10., 'ndim':2, 'nvar':15, 'end':175288},
-                   {'iter':0,  'runtime':10., 'ndim':2, 'nvar':15, 'end':2416}]
+    knownSingle = [{'iter': 68, 'runtime': 10., 'ndim': 2,
+                    'nvar': 15, 'end': 175288},
+                   {'iter': 0, 'runtime': 10., 'ndim': 2,
+                    'nvar': 15, 'end': 2416}]
 
     # Responses from multi-frame file:
-    knownMulti = [{'start': 0, 'iter':2500, 'runtime':0.0, 'ndim':2, 'nvar':11, 'end':4512},
-                  {'start': 4512, 'iter':2512, 'runtime': 120.0, 'ndim':2, 'nvar':11, 'end':9024}]
+    knownMulti = [{'start': 0, 'iter': 2500, 'runtime': 0.0, 'ndim': 2,
+                   'nvar': 11, 'end': 4512},
+                  {'start': 4512, 'iter': 2512, 'runtime': 120.0, 'ndim': 2,
+                   'nvar': 11, 'end': 9024}]
 
     def testOneFrame(self):
         '''Test files that only have one epoch frame.'''
-        
+
         # Open files, get file properties, then probe header and test
         # against known values:
         for f, known in zip(self.files_single, self.knownSingle):
@@ -126,7 +133,8 @@ class TestScanBinHeader(unittest.TestCase):
                 info = pb._scan_bin_header(data, *props[1:])
                 for key in known:
                     self.assertEqual(info[key], known[key])
-                    
+
+
 class TestIdlFile(unittest.TestCase):
     '''
     Test the class :class:`spacepy.pybats.IdlFile` for different output
@@ -135,36 +143,41 @@ class TestIdlFile(unittest.TestCase):
 
     # Known values for single-frame *.out files:
     varnames = 'x z rho ux uy uz bx by bz p b1x b1y b1z e jx jy jz'
-    units='R R Mp/cc km/s km/s km/s nT nT nT nPa nT nT nT J/m3 uA/m2 uA/m2 uA/m2'
+    units = 'R R Mp/cc km/s km/s km/s nT nT nT nPa nT nT nT J/m3 uA/m2 uA/m2 uA/m2'
     knownMhdUnits = dict(zip(varnames.split(), units.split()))
     knownMhdXmax = 31.0
     knownMhdXmin = -220.0
     knownMhdZlim = 124.0
+    knownMhdTime = dt.datetime(2014, 4, 10, 0, 0, 50)
 
     # Known values for multi-frame *.outs files:
     # Time/iteration range covered by files:
-    knownIterRng1  = [2500, 2512]
-    knownIterRng2  = [2500, 2512]
+    knownIterRng1 = [2500, 2512]
+    knownIterRng2 = [2500, 2512]
     knownRtimeRng1 = [0.0, 120.0]
     knownRtimeRng2 = [0.0, 120.0]
-    knownTimeRng1  = [dt.datetime(2014, 4, 10, 0, 0), dt.datetime(2014, 4, 10, 0, 2)]
-    knownTimeRng2  = [dt.datetime(2014, 4, 10, 0, 0), dt.datetime(2014, 4, 10, 0, 2)]
+    knownTimeRng1 = [dt.datetime(2014, 4, 10, 0, 0), dt.datetime(2014, 4, 10, 0, 2)]
+    knownTimeRng2 = [dt.datetime(2014, 4, 10, 0, 0), dt.datetime(2014, 4, 10, 0, 2)]
 
-    knownMax1 = {"Rho":14.871581077575684, "Ux":-1093.626953125,
-                 "Bz":4.795100212097168, "P":2.5764927864074707,
-                 "jy":0.0006453984533436596}
-    knownMax2 = {"Rho":14.71767520904541,"Ux":-1107.3873291015625,
-                 "Bz":4.878035068511963,"P":2.2604243755340576,
-                 "jy":0.0007115363841876388}
-    
+    knownMax1 = {"Rho": 14.871581077575684, "Ux": -1093.626953125,
+                 "Bz": 4.795100212097168, "P": 2.5764927864074707,
+                 "jy": 0.0006453984533436596}
+    knownMax2 = {"Rho": 14.71767520904541, "Ux": -1107.3873291015625,
+                 "Bz": 4.878035068511963, "P": 2.2604243755340576,
+                 "jy": 0.0007115363841876388}
+
     def testBinary(self):
         # Open file:
         mhd = pb.IdlFile(os.path.join(spacepy_testing.datadir,
-                                      'pybats_test', 'y0_binary.out'))
+                                      'pybats_test', 'y=0_mhd_1_e20140410-000050.out'))
+
+        # Test time attribute:
+        self.assertEqual(self.knownMhdTime, mhd.attrs['time'])
 
         # Test units are loaded correctly:
         for v in mhd:
-            if v not in self.varnames: continue
+            if v not in self.varnames:
+                continue
             self.assertEqual(self.knownMhdUnits[v], mhd[v].attrs['units'])
 
         # Test values inside of mhd:
@@ -172,7 +185,7 @@ class TestIdlFile(unittest.TestCase):
         self.assertEqual(self.knownMhdXmin, mhd['x'].min())
         self.assertEqual(self.knownMhdZlim, mhd['z'].max())
         self.assertEqual(self.knownMhdZlim*-1, mhd['z'].min())
-            
+
     def testAscii(self):
         # Open file:
         mhd = pb.IdlFile(os.path.join(
@@ -195,9 +208,9 @@ class TestIdlFile(unittest.TestCase):
                                       'y=0_mhd_1_e20140410-000000-000_20140410-000200-000.outs'))
 
         for i in range(len(self.knownIterRng1)):
-            self.assertEqual(self.knownIterRng1[i],  mhd.attrs['iter_range'][i])
+            self.assertEqual(self.knownIterRng1[i], mhd.attrs['iter_range'][i])
             self.assertEqual(self.knownRtimeRng1[i], mhd.attrs['runtime_range'][i])
-            self.assertEqual(self.knownTimeRng1[i],  mhd.attrs['time_range'][i])
+            self.assertEqual(self.knownTimeRng1[i], mhd.attrs['time_range'][i])
 
     def testSwitchFrame(self):
         '''Test our ability to open on arbitrary frame and change frame'''
@@ -208,41 +221,41 @@ class TestIdlFile(unittest.TestCase):
         mhd = pb.IdlFile(f, iframe=1)
 
         # Check against 2nd frame info:
-        self.assertEqual(self.knownIterRng2[1],  mhd.attrs['iter'])
+        self.assertEqual(self.knownIterRng2[1], mhd.attrs['iter'])
         self.assertEqual(self.knownRtimeRng2[1], mhd.attrs['runtime'])
-        self.assertEqual(self.knownTimeRng2[1],  mhd.attrs['time'])
+        self.assertEqual(self.knownTimeRng2[1], mhd.attrs['time'])
 
         # Check against 2nd frame data:
         for v in ['Rho', 'Ux', 'Bz', 'P', 'jy']:
             self.assertAlmostEqual(self.knownMax2[v], mhd[v].max(), places=14)
-        
+
         # Switch frames, check for successful update of attributes:
         mhd.switch_frame(0)
-        self.assertEqual(self.knownIterRng1[0],  mhd.attrs['iter'])
+        self.assertEqual(self.knownIterRng1[0], mhd.attrs['iter'])
         self.assertEqual(self.knownRtimeRng1[0], mhd.attrs['runtime'])
-        self.assertEqual(self.knownTimeRng1[0],  mhd.attrs['time'])
-         
+        self.assertEqual(self.knownTimeRng1[0], mhd.attrs['time'])
+
         # Check against 1st frame data:
         for v in ['Rho', 'Ux', 'Bz', 'P', 'jy']:
             self.assertAlmostEqual(self.knownMax1[v], mhd[v].max(), places=14)
-            
+
+
 class TestRim(unittest.TestCase):
 
     # Solutions for calc_I:
-    knownI = {'n_I'    :2.4567986751877576e-10,
-              'n_Iup'  :0.25176036603984825,
-              'n_Idown':-0.25176036579416844,
-              's_I'    :-8.211648588249157e-10,
-              's_Iup'  :0.2517603660687805,
-              's_Idown':-0.2517603668899454}
-    
+    knownI = {'n_I': 2.4567986751877576e-10,
+              'n_Iup': 0.25176036603984825,
+              'n_Idown': -0.25176036579416844,
+              's_I': -8.211648588249157e-10,
+              's_Iup': 0.2517603660687805,
+              's_Idown': -0.2517603668899454}
+
     def testReadZip(self):
         from spacepy.pybats import rim
 
         # Open file:
-        iono=rim.Iono(os.path.join(spacepy_testing.datadir, 'pybats_test',
-                                   'it000321_104510_000.idl.gz'))
-        
+        iono = rim.Iono(os.path.join(spacepy_testing.datadir, 'pybats_test',
+                                     'it000321_104510_000.idl.gz'))
 
     def testReadAscii(self):
         import gzip
@@ -269,7 +282,7 @@ class TestRim(unittest.TestCase):
         from spacepy.pybats import rim
         iono = rim.Iono(os.path.join(spacepy_testing.datadir, 'pybats_test',
                                      'it_wrapped.idl.gz'))
-                
+
     def testIonoCalc(self):
         '''Test calculations made by rim.Iono objects.'''
         from spacepy.pybats import rim
@@ -282,18 +295,18 @@ class TestRim(unittest.TestCase):
 
     def testAddCont(self):
         from spacepy.pybats import rim
-        import matplotlib as mpl
         import matplotlib.pyplot as plt
-        
+
         iono = rim.Iono(os.path.join(spacepy_testing.datadir, 'pybats_test',
                                      'it000321_104510_000.idl.gz'))
         out = iono.add_cont('n_jr', add_cbar=True)
 
         self.assertTrue(isinstance(out[0], plt.Figure))
         self.assertTrue(isinstance(out[1], plt.Axes))
-        self.assertTrue(isinstance(out[2], mpl.contour.QuadContourSet))
-        self.assertTrue(isinstance(out[3], mpl.colorbar.Colorbar))
-        
+        self.assertTrue(isinstance(out[2], matplotlib.contour.QuadContourSet))
+        self.assertTrue(isinstance(out[3], matplotlib.colorbar.Colorbar))
+
+
 class TestBats2d(unittest.TestCase):
     '''
     Test functionality of Bats2d objects.
@@ -303,12 +316,14 @@ class TestBats2d(unittest.TestCase):
                  'wy':0.0, 'u':1285.6114501953125}
     knownMax2 = {'jx': 1.680669083725661e-05, 'jbz': 8.276679608343329e-08,
                  'wy': 0.0, 'u': 1285.6114501953125}
-    
+
     def setUp(self):
-        self.mhd = pbs.Bats2d(os.path.join(spacepy_testing.datadir, 'pybats_test', 'y0_binary.out'))
+        self.mhd = pbs.Bats2d(os.path.join(spacepy_testing.datadir, 'pybats_test',
+                                           'y=0_mhd_1_e20140410-000050.out'))
         self.outs = pbs.Bats2d(os.path.join(spacepy_testing.datadir, 'pybats_test',
-                        'y=0_mhd_1_e20140410-000000-000_20140410-000200-000.outs'))
-    
+                                            'y=0_mhd_1_e20140410-000000-000_' +
+                                            '20140410-000200-000.outs'))
+
     def testCalc(self):
         # Test all calculations:
         self.mhd.calc_all()
@@ -318,7 +333,7 @@ class TestBats2d(unittest.TestCase):
         # Perform some calculations on the first data frame:
         self.outs.calc_utotal()
         self.outs.calc_jxb()
-        self.outs.calc_vort(conv=0) # Test maintaing kwargs between frames
+        self.outs.calc_vort(conv=0)  # Test maintaing kwargs between frames
 
         # Check initial calculated max values against reference:
         for k in self.knownMax1:
@@ -328,33 +343,31 @@ class TestBats2d(unittest.TestCase):
         self.outs.switch_frame(1)
         for k in self.knownMax2:
             self.assertAlmostEqual(self.outs[k].max(), self.knownMax2[k])
-                               
+
     def testMultispecies(self):
         # Open file:
         mhd = pbs.Bats2d(os.path.join(spacepy_testing.datadir, 'pybats_test',
                                       'cut_multispecies.out'))
-        mspec_varnames='x Rho Ux Uy Uz Bx By Bz P OpRho OpUx OpUy OpUz OpP jx jy jz g rbody cuty cutz'.split()
-        mspec_units='km Mp/cc km/s km/s km/s nT nT nT nPa Mp/cc km/s km/s km/s nPa uA/m2 uA/m2 uA/m2'.split()
+        mspec_varnames = 'x Rho Ux Uy Uz Bx By Bz P OpRho OpUx OpUy OpUz OpP jx jy jz g rbody cuty cutz'.split()
+        mspec_units = 'km Mp/cc km/s km/s km/s nT nT nT nPa Mp/cc km/s km/s km/s nPa uA/m2 uA/m2 uA/m2'.split()
         knownMultispecUnits = dict(zip(mspec_varnames,
                                        mspec_units))
 
         # Test units are loaded correctly:
         for v in mhd:
-            if v not in mspec_varnames: continue
+            if v not in mspec_varnames:
+                continue
             self.assertEqual(knownMultispecUnits[v], mhd[v].attrs['units'])
 
         mhd.calc_all(exclude=['calc_gradP', 'calc_vort'])
 
     def testPlotting(self):
         '''
-        Create a contour plot, add stream traces with arrows, 
+        Create a contour plot, add stream traces with arrows,
         close plot, pass if no Exceptions.  This is a basic test that
         ensures that all methods and functions underlying contours and
         field line tracing are at least operating to completion.
         '''
-
-        import matplotlib.pyplot as plt
-
         # Test adding a basic contour:
         fig, ax, cnt, cbar = self.mhd.add_contour('x', 'z', 'p', add_cbar=True)
 
@@ -378,7 +391,8 @@ class TestBats2d(unittest.TestCase):
         self.assertEqual(
             'Start value 150 out of range for variable z.',
             str(cm.exception))
-        
+
+
 class TestMagGrid(unittest.TestCase):
     '''
     Test the class :class:`spacepy.pybats.bats.MagGridFile` to ensure opening,
@@ -426,20 +440,21 @@ class TestMagGrid(unittest.TestCase):
         m2.calc_h()
         self.assertAlmostEqual(self.knownDbhMax, m1['dBh'].max())
         self.assertAlmostEqual(self.knownDbhMax, m2['dBh'].max())
-        
+
+
 class TestSatOrbit(unittest.TestCase):
     '''
     Test reading and writing of satellite orbit files.
     '''
     def setUp(self):
         # Create 5 minutes of fake data:
-        self.start = dt.datetime(2000,1,1)
+        self.start = dt.datetime(2000, 1, 1)
         self.time = np.array([self.start+dt.timedelta(minutes=i)
                               for i in range(5)])
 
-        self.pos = np.zeros( (3,5) )
+        self.pos = np.zeros((3, 5))
         for i in range(5):
-            self.pos[:,i]=[i, 10.+i, 100.+i]
+            self.pos[:, i] = [i, 10.+i, 100.+i]
 
     def testWrite(self):
         '''
@@ -464,7 +479,7 @@ class TestSatOrbit(unittest.TestCase):
             sat.write()
             os.listdir('.')
 
-            #### Now, test the integrity of the file:
+            # Now, test the integrity of the file:
             sat = SatOrbit('./testsat.dat')
 
             # Check header:
@@ -474,7 +489,7 @@ class TestSatOrbit(unittest.TestCase):
 
             # Check time and position:
             assert_array(sat['time'], self.time)
-            assert_array(sat['xyz'],  self.pos)
+            assert_array(sat['xyz'], self.pos)
         finally:
             # Get rid of file:
             remove('./testsat.dat')
@@ -488,13 +503,14 @@ class TestSatOrbit(unittest.TestCase):
 
         # Check header:
         self.assertEqual(sorted(sat.attrs['head']),
-                         sorted(['test','header','values']))
+                         sorted(['test', 'header', 'values']))
         self.assertEqual(sat.attrs['coor'], 'SMG')
 
         # Check time and position:
         assert_array(sat['time'], self.time)
-        assert_array(sat['xyz'],  self.pos)
-    
+        assert_array(sat['xyz'], self.pos)
+
+
 class TestVirtSat(unittest.TestCase):
     '''
     Test the class :class:`spacepy.pybats.VirtSat` to ensure opening, handling,
@@ -524,7 +540,8 @@ class TestVirtSat(unittest.TestCase):
         sat.calc_ndens()
         self.assertTrue('N' in sat)
         self.assertEqual(100, sat['oFrac'][0]+sat['hFrac'][0]+sat['heFrac'][0])
-        
+
+
 class TestImfInput(unittest.TestCase):
     '''
     Test reading, writing, and plotting from ImfInput files.
@@ -533,17 +550,17 @@ class TestImfInput(unittest.TestCase):
         # Files to open:
         self.file_single = os.path.join(spacepy_testing.datadir,
                                         'pybats_test', 'imf_single.dat')
-        self.file_multi  = os.path.join(spacepy_testing.datadir,
-                                        'pybats_test', 'imf_multi.dat')
+        self.file_multi = os.path.join(spacepy_testing.datadir,
+                                       'pybats_test', 'imf_multi.dat')
         self.sing = pb.ImfInput(self.file_single)
         self.mult = pb.ImfInput(self.file_multi)
 
     # Known values:
-    knownImfBz   = [3, -10.]
-    knownImfRho  = [5., 15.]
+    knownImfBz = [3, -10.]
+    knownImfRho = [5., 15.]
     knownImfTemp = [.80E+05, 1.20E+05]
     knownImfIono = [4.99, 0.01]
-    knownSubMilli= dt.datetime(2017, 9, 6, 16, 42, 37, 0)
+    knownSubMilli = dt.datetime(2017, 9, 6, 16, 42, 37, 0)
 
     def tearDown(self):
         # Remove temporary files.
@@ -558,7 +575,7 @@ class TestImfInput(unittest.TestCase):
         # Create an IMF object from scratch, fill with zeros.
         imf = pb.ImfInput()
         for key in imf: imf[key]=[0]
-        
+
         # Add a sub-millisecond time:
         imf['time'] = [dt.datetime(2017,9,6,16,42,36,999600)]
 
@@ -568,12 +585,12 @@ class TestImfInput(unittest.TestCase):
 
         # Test for floor of sub-millisecond times:
         self.assertEqual(self.knownSubMilli, imf2['time'][0])
-            
+
     def testWrite(self):
         # Test that files are correctly written to file.
-        
+
         from numpy.testing import assert_array_equal as assert_array
-        
+
         # Save original file names:
         old_file_1 = self.sing.attrs['file']
         old_file_2 = self.mult.attrs['file']
@@ -593,25 +610,24 @@ class TestImfInput(unittest.TestCase):
             assert_array(self.sing[v], sing[v])
         for v in mult:
             assert_array(self.mult[v], mult[v])
-        
-        
+
     def testOpen(self):
         # Test single fluid/default variable names:
-        self.assertEqual(self.knownImfBz[0],   self.sing['bz'][0])
-        self.assertEqual(self.knownImfBz[-1],  self.sing['bz'][-1])
-        self.assertEqual(self.knownImfRho[0],  self.sing['rho'][0])
+        self.assertEqual(self.knownImfBz[0], self.sing['bz'][0])
+        self.assertEqual(self.knownImfBz[-1], self.sing['bz'][-1])
+        self.assertEqual(self.knownImfRho[0], self.sing['rho'][0])
         self.assertEqual(self.knownImfRho[-1], self.sing['rho'][-1])
         self.assertEqual(self.knownImfTemp[0], self.sing['temp'][0])
-        self.assertEqual(self.knownImfTemp[-1],self.sing['temp'][-1])
+        self.assertEqual(self.knownImfTemp[-1], self.sing['temp'][-1])
 
         # Open and test multi-fluid/non-standard variable names:
-        self.assertEqual(self.knownImfBz[0],   self.mult['bz'][0])
-        self.assertEqual(self.knownImfBz[-1],  self.mult['bz'][-1])
-        self.assertEqual(self.knownImfRho[0],  self.mult['n'][0])
+        self.assertEqual(self.knownImfBz[0], self.mult['bz'][0])
+        self.assertEqual(self.knownImfBz[-1], self.mult['bz'][-1])
+        self.assertEqual(self.knownImfRho[0], self.mult['n'][0])
         self.assertEqual(self.knownImfTemp[0], self.mult['t'][0])
-        self.assertEqual(self.knownImfTemp[-1],self.mult['t'][-1])
+        self.assertEqual(self.knownImfTemp[-1], self.mult['t'][-1])
         self.assertEqual(self.knownImfIono[0], self.mult['IonoRho'][0])
-        self.assertEqual(self.knownImfIono[-1],self.mult['IonoRho'][-1])
+        self.assertEqual(self.knownImfIono[-1], self.mult['IonoRho'][-1])
 
     def testPlot(self):
         import matplotlib.pyplot as plt
@@ -642,7 +658,8 @@ class TestImfInput(unittest.TestCase):
                 self.assertEqual(self.mult['time'].size, self.mult[v].size)
             else:
                 self.assertEqual(self.mult[v].size, npts)
-        
+
+
 class TestExtraction(unittest.TestCase):
     '''
     Test Extraction class by opening a file with known solution.
@@ -650,10 +667,10 @@ class TestExtraction(unittest.TestCase):
     def setUp(self):
         self.mhd = pbs.Bats2d(os.path.join(spacepy_testing.datadir,
                                            'pybats_test', 'z0_sine.out'))
-    
+
     def testExtract(self):
         analytic = lambda x: 1.+.5*np.cos(x*np.pi/10.)
-        extr = self.mhd.extract(range(-5, 6),[-8]*11)
+        extr = self.mhd.extract(range(-5, 6), [-8]*11)
         for x, rho in zip(extr['x'], extr['rho']):
             self.assertAlmostEqual(rho, analytic(x), 2)
 
@@ -663,15 +680,15 @@ class TestGitm(unittest.TestCase):
     Test opening GITM binary files, handling files.
     '''
     nVars = 13
-    nLat  = 18
-    vers  = 4.03
-    time  = dt.datetime(2015, 3, 16, 20, 1, 8)
-    shape = (18,18)
-    lat1  = 1.48352986
-    
+    nLat = 18
+    vers = 4.03
+    time = dt.datetime(2015, 3, 16, 20, 1, 8)
+    shape = (18, 18)
+    lat1 = 1.48352986
+
     def testBinary(self):
         '''
-        This tests the ability to open a file and correctly read the attributes and 
+        This tests the ability to open a file and correctly read the attributes and
         variables as well as properly reshape the arrays and remove unused dimensions.
         '''
         # Open 2D file:
@@ -679,24 +696,35 @@ class TestGitm(unittest.TestCase):
                                       'gitm_2D.bin'))
         # Check some critical attributes/values:
         self.assertEqual(self.nVars, f.attrs['nVars'])
-        self.assertEqual(self.nLat,  f.attrs['nLat'])
-        self.assertEqual(self.vers,  f.attrs['version'])
-        self.assertEqual(self.time,  f['time'])
+        self.assertEqual(self.nLat, f.attrs['nLat'])
+        self.assertEqual(self.vers, f.attrs['version'])
+        self.assertEqual(self.time, f['time'])
         self.assertEqual(self.shape, f['Longitude'].shape)
-        self.assertAlmostEqual(   self.lat1, f['Latitude'][0,-1], 6)
+        self.assertAlmostEqual(self.lat1, f['Latitude'][0, -1], 6)
         self.assertAlmostEqual(-1*self.lat1, f['Latitude'][0, 0], 6)
-        
-class RampyTests(unittest.TestCase):
+
+
+class RamTests(unittest.TestCase):
     '''
-    Tests for pybats.rampy
+    Tests for pybats.ram
     '''
     def setUp(self):
-        super(RampyTests, self).setUp()
+        super(RamTests, self).setUp()
         self.testfile = os.path.join(spacepy_testing.datadir, 'pybats_test',
                                      'ramsat_test.nc')
+        self.p_test = os.path.join(spacepy_testing.datadir, 'pybats_test',
+                                   'rampress_test.dat')
+        self.p_test_noe = os.path.join(spacepy_testing.datadir, 'pybats_test',
+                                       'rampress_test_noe.dat')
+        self.log_test_1 = os.path.join(spacepy_testing.datadir, 'pybats_test',
+                                       'log_ram_test1.log')
+        self.log_test_2 = os.path.join(spacepy_testing.datadir, 'pybats_test',
+                                       'log_ram_test2.log')
+        self.ionopot_nc3 = os.path.join(spacepy_testing.datadir, 'pybats_test',
+                                        'ram_iono_pot.nc')
 
     def tearDown(self):
-        super(RampyTests, self).tearDown()
+        super(RamTests, self).tearDown()
 
     def test_RamSat_load(self):
         '''Test that RAM satellite netCDF will load'''
@@ -706,7 +734,8 @@ class RampyTests(unittest.TestCase):
         '''Test that start time attribute and Time variable are as expected'''
         data = ram.RamSat(self.testfile)
         self.assertEqual(data.starttime, dt.datetime(2012, 10, 29))
-        tst = [dt.datetime(2012, 10, 29) + dt.timedelta(seconds=sc) for sc in [60, 120, 180]]
+        tst = [dt.datetime(2012, 10, 29) + dt.timedelta(seconds=sc)
+               for sc in [60, 120, 180]]
         numpy.testing.assert_array_equal(data['Time'], tst)
 
     def test_RamSat_contents_dims(self):
@@ -721,10 +750,28 @@ class RampyTests(unittest.TestCase):
         data.create_omniflux(check=False)
         numpy.testing.assert_array_equal(flux_h, data['FluxH+'])
 
+    def test_RamSat_omni_pabin(self):
+        '''Check that internal PA bin calc is consistent'''
+        data = ram.RamSat(self.testfile)
+        data.create_omniflux(check=False)
+        omni1 = np.asarray(data['omniHe'].copy())
+        origwid = np.asarray(data['pa_width'].copy())
+        del data['pa_width']
+        data.create_omniflux(check=False)
+        omni2 = np.asarray(data['omniHe'])
+        # test that calculated omni is close -- bin widths are
+        # not fully recoverable from grid, so this is approximate
+        numpy.testing.assert_allclose(omni1, omni2, rtol=1e-1)
+        # and test that "pa_width" is consistent with simulation
+        # (again, calculation from pa_grid isn't fully recovering
+        # actual widths - so test is approximate)
+        newwid = np.asarray(data['pa_width'])
+        numpy.testing.assert_array_almost_equal(origwid, newwid, decimal=2)
+
     def test_RamSat_omnicalc_regress(self):
         '''Regression test for omni flux calculation'''
         data = ram.RamSat(self.testfile)
-        #remove any precalculated omniflux
+        # remove any precalculated omniflux
         rmkeys = [key for key in data if key.lower().startswith('omni')]
         for rmk in rmkeys:
             del data[rmk]
@@ -749,6 +796,77 @@ class RampyTests(unittest.TestCase):
         expected = '00:02 UT\n04:35 MLT\n-13.4$^{\circ}$ MLat\nR=5.05 $R_{E}$'
         self.assertEqual(expected, fmtstr)
 
-if __name__=='__main__':
-    unittest.main()
+    def test_PressureFile_load(self):
+        '''Make sure pressure file loads with no error'''
+        data = ram.PressureFile(self.p_test)
+        self.assertIn('aniHe', data)
+        # single point checks
+        self.assertAlmostEqual(data['pere'][0], 3.5930268833807135)
+        self.assertAlmostEqual(data['perH'][0], 0.17925744886042114)
+        self.assertAlmostEqual(data['total'][0], 2.615855029414899)
 
+    def test_PressureFile_no_elec(self):
+        '''Make sure pressure file loads with electrons turned off'''
+        data = ram.PressureFile(self.p_test_noe)
+        self.assertIn('aniH', data)
+        self.assertIn('total', data)
+        self.assertNotIn('pere', data)
+        self.assertNotIn('pare', data)
+        self.assertAlmostEqual(data['perH'][0], 0.17925744886042114)
+        self.assertAlmostEqual(data['total'][0], 2.615855029414899)
+
+    def test_pcolor_plot(self):
+        '''Pcolor plot should not fail and should return known types'''
+        import matplotlib.pyplot as plt
+        data = ram.PressureFile(self.p_test)
+        out = data.add_pcol_press('totH')
+        self.assertTrue(isinstance(out[0], plt.Figure))
+        self.assertTrue(isinstance(out[1], plt.Axes))
+        self.assertTrue(isinstance(out[2], matplotlib.collections.QuadMesh))
+        self.assertTrue(out[3] is None)
+
+    def test_contour_plot(self):
+        '''Contour plot should not fail and should return known types'''
+        import matplotlib.pyplot as plt
+        data = ram.PressureFile(self.p_test)
+        out = data.add_cont_press('totH', add_cbar=True)
+        self.assertTrue(isinstance(out[0], plt.Figure))
+        self.assertTrue(isinstance(out[1], plt.Axes))
+        self.assertTrue(isinstance(out[2], matplotlib.tri.TriContourSet))
+        self.assertTrue(isinstance(out[3], matplotlib.colorbar.Colorbar))
+
+    def test_logfile_ms(self):
+        '''Load logfile and parse full time, incl. millisec'''
+        log = ram.LogFile(self.log_test_1)
+        # make sure we read all the lines
+        self.assertEqual(len(log['time']), 4)
+        # check that milliseconds were parsed and stored
+        microsecs = [0, 0, 0, 1000]
+        read_mus = [tt.microsecond for tt in log['time']]
+        numpy.testing.assert_array_equal(microsecs, read_mus)
+
+    def test_logfile_concat(self):
+        '''Concatenate log files'''
+        log = ram.LogFile(self.log_test_1)
+        log2 = ram.LogFile(self.log_test_2)
+        log.timeseries_append(log2)
+        # make sure we read all the lines
+        self.assertEqual(len(log['time']), 7)
+        # check step numbers and order
+        simstep = np.arange(60, 425, 60).astype(float)
+        logstep = log['runtime']
+        numpy.testing.assert_array_equal(simstep, logstep)
+
+    def test_ionopot(self):
+        '''Load IonoPot file (NC3) and access data'''
+        iono = ram.IonoPotScb(self.ionopot_nc3)
+        iono.calc_pot_drop()
+        # check that ceqp has one entry per time
+        self.assertEqual(iono['ceqp'].shape, iono['time'].shape)
+        # regr. : test known value
+        numpy.testing.assert_approx_equal(iono['PhiIono'][-1, -1, -1],
+                                          -143.05573)
+
+
+if __name__ == '__main__':
+    unittest.main()
