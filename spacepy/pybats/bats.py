@@ -356,7 +356,8 @@ class Extraction(PbData):
         # Create data object for holding extracted values.
         # One vector for each value w/ same units as parent object.
         for v in self._var_list:
-            self[v] = dmarray(np.zeros(x.shape), attrs=data[v].attrs)
+            if (v != 'format' and v != 'grid'):
+                self[v] = dmarray(np.zeros(x.shape), attrs=data[v].attrs)
 
         # Some helpers:
         xAll = data[data['grid'].attrs['dims'][0]]
@@ -374,7 +375,8 @@ class Extraction(PbData):
             if not pts.any(): continue
             locs = data.qtree[k].locs
             for v in self._var_list:
-                self[v][pts] = interp_2d_reg(x[pts], y[pts], xAll[locs], 
+                if (v != 'format' and v != 'grid'):
+                    self[v][pts] = interp_2d_reg(x[pts], y[pts], xAll[locs], 
                                              yAll[locs], data[v][locs]) 
 
 class Stream(Extraction):
