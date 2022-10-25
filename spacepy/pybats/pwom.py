@@ -887,7 +887,7 @@ class DistributionFunction(PbData):
             
         # Add cbar if necessary.
         if add_cbar:
-            cbar=plt.colorbar(cont, ticks=ticks, format=fmt, pad=0.01)
+            cbar=plt.colorbar(cont, ticks=ticks, format=fmt, pad=0.01,ax=ax)
             if clabel==None: 
                 clabel="%s" % (var)
             cbar.set_label(clabel)
@@ -897,8 +897,8 @@ class DistributionFunction(PbData):
         # Set title, labels, axis ranges (use defaults where applicable.)
         if title: ax.set_title(title)
         #ax.set_yticks([]), ax.set_xticks([])
-        ax.set_xlabel('Vpar [cm/s]')
-        ax.set_ylabel('Vperp [cm/s]')
+        ax.set_xlabel('|$v_\perp$| [cm/s]')
+        ax.set_ylabel('$v_\parallel$ [cm/s]')
 
             
         return fig, ax, cont, cbar
