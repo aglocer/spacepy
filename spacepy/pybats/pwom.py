@@ -141,14 +141,22 @@ class Line(PbData):
                     else:
                         self[v].attrs['units']=None
                         
-                # Loop through rest of data to fill arrays.
-                for i in range(nTimes):
-                    t=float((lines[i*(nAlts+5)+1].split())[1])
-                    self['time'][i]=starttime+dt.timedelta(seconds=t)
-                    for j, l in enumerate(lines[i*(nAlts+5)+5:(i+1)*(nAlts+5)]):
-                        parts=l.split()
-                        for k,v in enumerate(var):
-                            self[v][i,j]=float(parts[k+1])
+            # Loop through rest of data to fill arrays.
+            for i in range(nTimes):
+                #print('start reading snapshot '+str(i))
+                t=float((lines[i*(nAlts+5)+1].split())[1])
+                self['time'][i]=starttime+dt.timedelta(seconds=t)
+                for j, l in enumerate(lines[i*(nAlts+5)+5:(i+1)*(nAlts+5)]):
+                    parts=l.split()
+                    for k,v in enumerate(var):
+                        self[v][i,j]=float(parts[k+1])
+
+                #txt=' '.join(lines[i*(nAlts+5)+5:(i+1)*(nAlts+5)]).split()
+                #dat= np.array(txt,dtype=np.float32).reshape([nAlts,len(var)+1])
+                #    
+                #for k,v in enumerate(var):
+                #    self[v][i,:]=dat[:,k]
+                #print('end reading snapshot '+str(i))
         else:
             import struct
             char_size = 1
