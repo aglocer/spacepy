@@ -667,6 +667,52 @@ class SimpleFunctionTests(unittest.TestCase):
 """
         self.assertEqual(expected, result)
 
+    def test_dictree_levels(self):
+        """dictree with specified max number of levels"""
+        a = {'a': 1, 'b': 2,
+             'c':{'aa': 11, 'bb': 22, 'cc': { 'aaa': 111, 'bbb': 222}}}
+        realstdout = sys.stdout
+        output = StringIO.StringIO()
+        sys.stdout = output
+        self.assertIs(tb.dictree(a, verbose=True, levels=2), None)
+        sys.stdout = realstdout
+        result = output.getvalue()
+        output.close()
+        expected = """+
+|____a (int)
+|____b (int)
+|____c (dict [3])
+     |____aa (int)
+     |____bb (int)
+     |____cc (dict [2])
+"""
+        self.assertEqual(expected, result)
+        result = tb.dictree(a, verbose=True, levels=2, print_out=False)
+        self.assertEqual(expected, result)
+
+    def test_dictree_dmarray(self):
+        """dictree with dmarray"""
+        a = spacepy.SpaceData(
+            {'a': 1, 'b': 2,
+             'c': spacepy.dmarray([[1, 2, 3], [4, 5, 6]],
+                                  attrs={'foo': 'bar'})},
+            attrs={'test': 99})
+        realstdout = sys.stdout
+        output = StringIO.StringIO()
+        sys.stdout = output
+        self.assertIs(tb.dictree(a, verbose=True, attrs=True), None)
+        sys.stdout = realstdout
+        result = output.getvalue()
+        output.close()
+        expected = """+
+:|____test (int)
+|____a (int)
+|____b (int)
+|____c (spacepy.datamodel.dmarray (2, 3))
+    :|____foo (str [3])
+"""
+        self.assertEqual(expected, result)
+
     def test_geomspace(self):
         """geomspace should give known output"""
         ans = [1, 10, 100, 1000]

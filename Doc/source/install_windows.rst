@@ -4,7 +4,7 @@ Windows Installation
 
 The SpacePy team currently provides binary "wheels" via PyPI so it can
 be installed on Windows without a compiler. Binaries are provided for
-Python 3.6 through 3.10 in 64-bit and 32-bit variants for each.
+Python 3.6 through 3.10 in 64-bit variant only.
 ``pip install spacepy`` should find and install these binaries.
 
 Our recommended (but not required) Python distribution is `Anaconda
@@ -13,10 +13,8 @@ Python 3. Anaconda includes much of the scientific Python
 stack. Another excellent distribution is `Canopy
 <https://www.enthought.com/product/canopy/>`_.
 
-You may need to install the dependencies some way other than pip; for
-example, if you are running an earlier version of Python. The latest
-version of many dependencies requires Python 3.6 and pip will not
-install older versions to get around this. See :ref:`win_dep_conda`.
+If you prefer to install the dependencies some way other than pip, see
+:ref:`win_dep_conda`.
 
 .. contents::
    :local:
@@ -40,7 +38,7 @@ by ``m2w64-gcc-fortran``.
 
 If you have difficulties, it may be useful to reference the `build
 scripts
-<https://github.com/spacepy/spacepy/tree/master/developer/scripts>`_
+<https://github.com/spacepy/spacepy/tree/main/developer/scripts>`_
 the SpacePy developers use.
 
 .. _windows_CDF:
@@ -68,7 +66,7 @@ Installation via ``pip`` will automatically install most Python
 dependencies (but not the :ref:`NASA CDF library <windows_CDF>`).
 They can also be installed from conda::
 
-  conda install numpy scipy matplotlib h5py
+  conda install numpy python-dateutil scipy matplotlib h5py
 
 Standalone dependencies
 =======================

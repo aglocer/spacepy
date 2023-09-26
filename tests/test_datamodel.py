@@ -11,9 +11,11 @@ from __future__ import division
 
 import copy
 import datetime
+import gzip
 import marshal
 import os
 import os.path
+import shutil
 import tempfile
 import unittest
 
@@ -26,6 +28,8 @@ import warnings
 
 import spacepy_testing
 import spacepy.datamodel as dm
+import spacepy.pycdf
+import spacepy.pycdf.const
 import spacepy.time as spt
 import numpy as np
 
@@ -41,7 +45,8 @@ except NameError:
     str_classes = (str, bytes)
     unicode = str
 
-__all__ = ['SpaceDataTests', 'dmarrayTests', 'converterTests', 'JSONTests', 'converterTestsCDF']
+__all__ = ['SpaceDataTests', 'dmarrayTests', 'converterTests', 'JSONTests', 'converterTestsCDF',
+           'VariableTests', 'ISTPPlotTests']
 
 
 class SpaceDataTests(unittest.TestCase):
@@ -186,6 +191,8 @@ class SpaceDataTests(unittest.TestCase):
         result = output.getvalue()
         output.close()
         expected = "+\n|____foo\n"
+        self.assertEqual(result, expected)
+        result = a.tree(print_out=False)
         self.assertEqual(result, expected)
 
     def test_fromRecArrayNames(self):
@@ -764,6 +771,8 @@ class converterTests(unittest.TestCase):
         np.testing.assert_array_equal(dm._dateToISO(d1), ['2012-12-21T00:00:00', '2012-12-22T00:00:00'])
 
 class converterTestsCDF(unittest.TestCase):
+    longMessage = True
+
     def setUp(self):
         super(converterTestsCDF, self).setUp()
         self.SDobj = dm.SpaceData(attrs={'global': 'test'})
@@ -797,9 +806,60 @@ class converterTestsCDF(unittest.TestCase):
     def test_toCDF_method(self):
         """Convert to CDF, using the method, catching #404"""
         a = dm.SpaceData({'dat': dm.dmarray([1, 2, 3])})
-        a.toCDF(self.testfile, mode='a')
+        a.toCDF(self.testfile)
         newobj = dm.fromCDF(self.testfile)
         np.testing.assert_array_equal([1, 2, 3], newobj['dat'])
+
+    def test_toCDF_unset_backward(self):
+        """Convert to CDF, default not backward compatible"""
+        dm.toCDF(self.testfile, self.SDobj)
+        with spacepy.pycdf.CDF(self.testfile) as f:
+            self.assertFalse(f.backward)
+
+    def test_toCDF_not_backward(self):
+        """Convert to CDF, force not backward compatible"""
+        dm.toCDF(self.testfile, self.SDobj, backward=False)
+        with spacepy.pycdf.CDF(self.testfile) as f:
+            self.assertFalse(f.backward)
+
+    def test_toCDF_backward(self):
+        """Convert to CDF, force backward compatible"""
+        # Can't use 64-bit int if backward compat
+        self.SDobj['var'] = np.require(self.SDobj['var'], dtype=np.int32)
+        dm.toCDF(self.testfile, self.SDobj, backward=True)
+        with spacepy.pycdf.CDF(self.testfile) as f:
+            self.assertTrue(f.backward)
+
+    def test_toCDF_timetypes(self):
+        """Convert time to CDF"""
+        # Can't use 64-bit int if backward compat
+        self.SDobj['var'] = np.require(self.SDobj['var'], dtype=np.int32)
+        self.SDobj['Epoch'] = dm.dmarray([
+            datetime.datetime(2010, 1, 1), datetime.datetime(2010, 1, 2)])
+        for backward, tt2000, expected in [
+                (None, None, spacepy.pycdf.const.CDF_TIME_TT2000),
+                (None, True, spacepy.pycdf.const.CDF_TIME_TT2000),
+                (None, False, spacepy.pycdf.const.CDF_EPOCH),
+                (True, None, spacepy.pycdf.const.CDF_EPOCH),
+                (False, None, spacepy.pycdf.const.CDF_TIME_TT2000),
+                # True, True is an exception
+                (True, False, spacepy.pycdf.const.CDF_EPOCH),
+                (False, True, spacepy.pycdf.const.CDF_TIME_TT2000),
+                (False, False, spacepy.pycdf.const.CDF_EPOCH),
+                ]:
+            dm.toCDF(self.testfile, self.SDobj,
+                     backward=backward, TT2000=tt2000)
+            with spacepy.pycdf.CDF(self.testfile) as f:
+                self.assertEqual(
+                    expected.value,
+                    f['Epoch'].type(),
+                    msg='Backward: {} TT2000: {}'.format(backward, tt2000))
+            os.remove(self.testfile)
+        with self.assertRaises(ValueError) as cm:
+            dm.toCDF(self.testfile, self.SDobj, backward=True, TT2000=True)
+        self.assertEqual('Cannot use TT2000 in backward-compatible CDF.',
+                         str(cm.exception))
+
 
 class JSONTests(unittest.TestCase):
     def setUp(self):
@@ -810,6 +870,26 @@ class JSONTests(unittest.TestCase):
             spacepy_testing.datadir, '20130218_rbspa_MagEphem_bad.txt')
         self.testdir = tempfile.mkdtemp()
         self.testfile = os.path.join(self.testdir, 'test.cdf')
+        self.keys = ['PerigeePosGeod', 'S_sc_to_pfn', 'S_pfs_to_Bmin', 'Pfs_gsm',
+                     'Pfn_ED_MLAT', 'ED_R', 'Dst', 'DateTime', 'DOY', 'ED_MLON',
+                     'IntModel', 'ApogeePosGeod', 'CD_MLON', 'S_sc_to_pfs',
+                     'GpsTime', 'JulianDate', 'M_ref', 'ED_MLT', 'Pfs_ED_MLAT',
+                     'Bfs_geo', 'Bm', 'Pfn_CD_MLON', 'CD_MLAT', 'Pfs_geo',
+                     'Rsm', 'Pmin_gsm', 'Rgei', 'Rgsm', 'Pfs_CD_MLAT', 'S_total',
+                     'Rgeod_Height', 'Date', 'Alpha', 'M_igrf', 'Pfs_CD_MLT',
+                     'ED_MLAT', 'CD_R', 'PerigeeTimes', 'UTC', 'Pfn_ED_MLT',
+                     'BoverBeq', 'Lsimple', 'Lstar', 'I', 'DipoleTiltAngle',
+                     'K', 'Bmin_gsm', 'S_Bmin_to_sc', 'Bfs_gsm', 'L',
+                     'ApogeeTimes', 'ExtModel', 'Kp', 'Pfs_geod_LatLon',
+                     'MlatFromBoverBeq', 'Pfn_gsm', 'Loss_Cone_Alpha_n', 'Bfn_geo',
+                     'Pfn_CD_MLAT', 'Rgeod_LatLon', 'Pfs_ED_MLT', 'Pfs_CD_MLON',
+                     'Bsc_gsm', 'Pfn_geod_Height', 'Lm_eq', 'Rgse',
+                     'Pfn_geod_LatLon', 'CD_MLT', 'FieldLineType', 'Pfn_CD_MLT',
+                     'Pfs_geod_Height', 'Rgeo', 'InvLat_eq', 'M_used',
+                     'Loss_Cone_Alpha_s', 'Bfn_gsm', 'Pfn_ED_MLON', 'Pfn_geo',
+                     'InvLat', 'Pfs_ED_MLON']
+        if str is bytes:  # py3 check (3: False, 2: True)
+            self.keys = [unicode(k) for k in self.keys]
 
     def tearDown(self):
         super(JSONTests, self).tearDown()
@@ -817,71 +897,109 @@ class JSONTests(unittest.TestCase):
             os.remove(self.testfile)
         os.rmdir(self.testdir)
 
+    def readJSONMetadata_keycheck(self, dat):
+        """testing of readJSONMetadata to be be reused"""
+        # make sure data has all the keys and no more or less
+        for k in dat:
+            self.assertTrue(k in self.keys)
+            ind = self.keys.index(k)
+            del self.keys[ind]
+        self.assertEqual(len(self.keys), 0)
+
     def test_readJSONMetadata(self):
         """readJSONMetadata should read in the file"""
         dat = dm.readJSONMetadata(self.filename)
-        keys = ['PerigeePosGeod', 'S_sc_to_pfn', 'S_pfs_to_Bmin', 'Pfs_gsm',
-                'Pfn_ED_MLAT', 'ED_R', 'Dst', 'DateTime', 'DOY', 'ED_MLON',
-                'IntModel', 'ApogeePosGeod', 'CD_MLON', 'S_sc_to_pfs',
-                'GpsTime', 'JulianDate', 'M_ref', 'ED_MLT', 'Pfs_ED_MLAT',
-                'Bfs_geo', 'Bm', 'Pfn_CD_MLON', 'CD_MLAT', 'Pfs_geo',
-                'Rsm', 'Pmin_gsm', 'Rgei', 'Rgsm', 'Pfs_CD_MLAT', 'S_total',
-                'Rgeod_Height', 'Date', 'Alpha', 'M_igrf', 'Pfs_CD_MLT',
-                'ED_MLAT', 'CD_R', 'PerigeeTimes', 'UTC', 'Pfn_ED_MLT',
-                'BoverBeq', 'Lsimple', 'Lstar', 'I', 'DipoleTiltAngle',
-                'K', 'Bmin_gsm', 'S_Bmin_to_sc', 'Bfs_gsm', 'L',
-                'ApogeeTimes', 'ExtModel', 'Kp', 'Pfs_geod_LatLon',
-                'MlatFromBoverBeq', 'Pfn_gsm', 'Loss_Cone_Alpha_n', 'Bfn_geo',
-                'Pfn_CD_MLAT', 'Rgeod_LatLon', 'Pfs_ED_MLT', 'Pfs_CD_MLON',
-                'Bsc_gsm', 'Pfn_geod_Height', 'Lm_eq', 'Rgse',
-                'Pfn_geod_LatLon', 'CD_MLT', 'FieldLineType', 'Pfn_CD_MLT',
-                'Pfs_geod_Height', 'Rgeo', 'InvLat_eq', 'M_used',
-                'Loss_Cone_Alpha_s', 'Bfn_gsm', 'Pfn_ED_MLON', 'Pfn_geo',
-                'InvLat', 'Pfs_ED_MLON']
-        if str is bytes:
-            keys = [unicode(k) for k in keys]
-        # make sure data has all the keys and no more or less
-        for k in dat:
-            self.assertTrue(k in keys)
-            ind = keys.index(k)
-            del keys[ind]
-        self.assertEqual(len(keys), 0)
+        self.readJSONMetadata_keycheck(dat)
+
+    @unittest.expectedFailure
+    def test_readJSONMetadata_zip(self):
+        """readJSONMetadata should read in a zip file"""
+        # make a zip file and then remove it when done
+        tmpdirname = tempfile.mkdtemp(suffix='_zip', prefix='readJSONMetadata_')
+        try:
+            archive_name = os.path.join(tmpdirname, os.path.basename(self.filename))
+            shutil.copy(self.filename, tmpdirname)
+            shutil.make_archive(base_name=archive_name, format='zip', base_dir=tmpdirname)
+            dat = dm.readJSONMetadata(archive_name + '.zip')
+            self.readJSONMetadata_keycheck(dat)
+        finally:
+            shutil.rmtree(tmpdirname)
+
+    def test_readJSONMetadata_gzip(self):
+        """readJSONMetadata should read in a gzip file"""
+        # make a gzip file and then remove it when done
+        tmpdirname = tempfile.mkdtemp(suffix='_gzip', prefix='readJSONMetadata_')
+        try:
+            gzipname = os.path.join(tmpdirname, os.path.basename(self.filename) + '.gz')
+            with open(self.filename, 'rb') as f_in:
+                with gzip.open(gzipname, 'wb') as f_out:
+                    tmp = f_in.readlines()
+                    f_out.writelines(tmp)
+            dat = dm.readJSONMetadata(gzipname)
+            self.readJSONMetadata_keycheck(dat)
+        finally:
+            shutil.rmtree(tmpdirname)
 
     def test_readJSONMetadata_badfile(self):
         """readJSONMetadata fails on bad files"""
         self.assertRaises(ValueError, dm.readJSONMetadata, self.filename_bad)
 
-    def test_readJSONheadedASCII(self):
-        """readJSONheadedASCII should read the test file"""
-        dat = dm.readJSONheadedASCII(self.filename)
-        keys = ['PerigeePosGeod', 'S_sc_to_pfn', 'S_pfs_to_Bmin', 'Pfs_gsm',
-                'Pfn_ED_MLAT', 'ED_R', 'Dst', 'DateTime', 'DOY', 'ED_MLON',
-                'IntModel', 'ApogeePosGeod', 'CD_MLON', 'S_sc_to_pfs',
-                'GpsTime', 'JulianDate', 'M_ref', 'ED_MLT', 'Pfs_ED_MLAT',
-                'Bfs_geo', 'Bm', 'Pfn_CD_MLON', 'CD_MLAT', 'Pfs_geo',
-                'Rsm', 'Pmin_gsm', 'Rgei', 'Rgsm', 'Pfs_CD_MLAT', 'S_total',
-                'Rgeod_Height', 'Date', 'Alpha', 'M_igrf', 'Pfs_CD_MLT',
-                'ED_MLAT', 'CD_R', 'PerigeeTimes', 'UTC', 'Pfn_ED_MLT',
-                'BoverBeq', 'Lsimple', 'Lstar', 'I', 'DipoleTiltAngle',
-                'K', 'Bmin_gsm', 'S_Bmin_to_sc', 'Bfs_gsm', 'L',
-                'ApogeeTimes', 'ExtModel', 'Kp', 'Pfs_geod_LatLon',
-                'MlatFromBoverBeq', 'Pfn_gsm', 'Loss_Cone_Alpha_n', 'Bfn_geo',
-                'Pfn_CD_MLAT', 'Rgeod_LatLon', 'Pfs_ED_MLT', 'Pfs_CD_MLON',
-                'Bsc_gsm', 'Pfn_geod_Height', 'Lm_eq', 'Rgse',
-                'Pfn_geod_LatLon', 'CD_MLT', 'FieldLineType', 'Pfn_CD_MLT',
-                'Pfs_geod_Height', 'Rgeo', 'InvLat_eq', 'M_used',
-                'Loss_Cone_Alpha_s', 'Bfn_gsm', 'Pfn_ED_MLON', 'Pfn_geo',
-                'InvLat', 'Pfs_ED_MLON']
-        if str is bytes:
-            keys = [unicode(k) for k in keys]
+    def readJSONheadedASCII_checking(self, dat, double=False):
+        """testing of readJSONheadedASCII to be be reused"""
         # make sure data has all the keys and no more or less
         for k in dat:
-            self.assertTrue(k in keys)
-            ind = keys.index(k)
-            del keys[ind]
-        self.assertEqual(len(keys), 0)
+            self.assertTrue(k in self.keys)
+            ind = self.keys.index(k)
+            del self.keys[ind]
+        self.assertEqual(len(self.keys), 0)
+        if not double:
+            np.testing.assert_array_equal(dat['DateTime'],
+                                          [datetime.datetime(2013, 2, 18, 0, 0), datetime.datetime(2013, 2, 18, 0, 5)])
+        else:
+            np.testing.assert_array_equal(dat['DateTime'],
+                                          [datetime.datetime(2013, 2, 18, 0, 0), datetime.datetime(2013, 2, 18, 0, 5),
+                                           datetime.datetime(2013, 2, 18, 0, 0), datetime.datetime(2013, 2, 18, 0, 5)])
+
+    def test_readJSONheadedASCII(self):
+        """readJSONheadedASCII should read the test file"""
         dat = dm.readJSONheadedASCII(self.filename, convert=True)
-        np.testing.assert_array_equal(dat['DateTime'], [datetime.datetime(2013, 2, 18, 0, 0), datetime.datetime(2013, 2, 18, 0, 5)])
+        self.readJSONheadedASCII_checking(dat)
+
+    def test_readJSONheadedASCII_gzip(self):
+        """readJSONheadedASCII should read the test file"""
+        # make a gzip file and then remove it when done
+        try:
+            tmpdirname = tempfile.mkdtemp(suffix='_zip', prefix='readJSONheadedASCII_')
+            with open(self.filename, 'rb') as f_in:
+                gzipname = os.path.join(tmpdirname, os.path.basename(self.filename) + '.gz')
+                with gzip.open(gzipname, 'wb') as f_out:
+                    f_out.writelines(f_in)  # py2
+            dat = dm.readJSONheadedASCII(gzipname, convert=True)
+            self.readJSONheadedASCII_checking(dat)
+        finally:
+            try:
+                shutil.rmtree(tmpdirname)
+            except FileNotFoundError:
+                # try triggered before the temp directory could be created, out of disk space?
+                self.fail("Test failed in awkward fashion")
+
+    def test_readJSONheadedASCII_gzip_mixed(self):
+        """readJSONheadedASCII should read a list of files, some gzip form not"""
+        # make a gzip file and then remove it when done
+        try:
+            tmpdirname = tempfile.mkdtemp(suffix='_zip', prefix='readJSONheadedASCII_')
+            with open(self.filename, 'rb') as f_in:
+                gzipname = os.path.join(tmpdirname, os.path.basename(self.filename) + '.gz')
+                with gzip.open(gzipname, 'wb') as f_out:
+                    f_out.writelines(f_in)  # py2
+            dat = dm.readJSONheadedASCII([gzipname, self.filename], convert=True)
+            self.readJSONheadedASCII_checking(dat, double=True)
+        finally:
+            try:
+                shutil.rmtree(tmpdirname)
+            except FileNotFoundError:
+                # try triggered before the temp directory could be created, out of disk space?
+                self.fail("Test failed in awkward fashion")
 
     def test_idl2html(self):
         """_idl2html should have known output"""
@@ -1102,6 +1220,423 @@ class VariableTests(unittest.TestCase):
                  'UNITS': ' ',
                  'VAR_TYPE': 'metadata'}
         self.assertEqual(a, a_ans)
+
+
+class ISTPPlotTests(spacepy_testing.TestPlot):
+    """Test ISTP-based SpaceData"""
+    # Not all tests use plotting, but many do, and need a single line of inheritance
+
+    def setUp(self):
+        super().setUp()
+        npoints = 50  # points in synthetic data
+        x = np.linspace(0, 2 * np.pi, npoints)
+        self.sd = dm.SpaceData({
+            'dim': dm.dmarray(
+                [0, 1, 2],
+                attrs={'CATDESC': 'Dimension index',
+                       'FIELDNAM': 'dim',
+                       'FORMAT': 'I2',
+                       'UNITS': ' ',
+                       'VAR_TYPE': 'support_data'}),
+            'Epoch': dm.dmarray(
+                [datetime.datetime(2020, 8, 1, 0, i, 30) for i in range(npoints)],
+                attrs={'CATDESC': 'Time for B field',
+                       'FIELDNAM': 'Epoch',
+                       'FILLVAL': datetime.datetime(9999, 12, 31, 23, 59, 59, 999999),
+                       'LABLAXIS': 'UT',
+                       'MONOTON': 'INCREASE',
+                       'SCALETYP': 'linear',
+                       'UNITS': 'ns',
+                       'VALIDMAX': datetime.datetime(1990, 1, 1),
+                       'VALIDMIN': datetime.datetime(2030, 1, 1),
+                       'VAR_TYPE': 'support_data'}),
+            'B_labels': dm.dmarray(
+                ['X', 'Y', 'Z'],
+                attrs={'CATDESC': 'Labels for B',
+                       'FIELDNAM': 'Labels for B',
+                       'FORMAT': 'A3',
+                       'UNITS': ' ',
+                       'VAR_TYPE': 'metadata'}),
+            'B_vec': dm.dmarray(
+                10 * np.column_stack((np.sin(x), np.cos(x), np.sin(x / 2))),  # fake but pretty
+                attrs={'CATDESC': 'Magnetic field',
+                       'DEPEND_0': 'Epoch',
+                       'DEPEND_1': 'dim',
+                       'DISPLAY_TYPE': 'time_series',
+                       'FIELDNAM': 'B_vec',
+                       'FILLVAL': -1e+31,
+                       'FORMAT': 'F6.1',
+                       'LABLAXIS': 'B',
+                       'LABL_PTR_1': 'B_labels',
+                       'SCALETYP': 'linear',
+                       'UNITS': 'nT',
+                       'VALIDMAX': 1000.,
+                       'VALIDMIN': -1000.,
+                       'VAR_TYPE': 'data'}),
+            'B_mag': dm.dmarray(
+                10 * np.sin(x),  # fake but pretty
+                attrs={'CATDESC': 'Magnetic field',
+                       'DEPEND_0': 'Epoch',
+                       'DISPLAY_TYPE': 'time_series',
+                       'FIELDNAM': 'B_mag',
+                       'FILLVAL': -1e+31,
+                       'FORMAT': 'F6.1',
+                       'LABLAXIS': 'B',
+                       'SCALETYP': 'linear',
+                       'UNITS': 'nT',
+                       'VALIDMAX': 1000.,
+                       'VALIDMIN': -1000.,
+                       'VAR_TYPE': 'data'}),
+            'H_Rate': dm.dmarray(
+                .1 + 1e4 * np.sin(x / 2)[:, None] * (np.logspace(1, 3, 20) ** -2)[None, :],
+                attrs={'CATDESC': 'Proton count rate',
+                       'DEPEND_0': 'Epoch',
+                       'DEPEND_1': 'Energy',
+                       'DISPLAY_TYPE': 'spectrogram',
+                       'FIELDNAM': 'H_Rate',
+                       'FILLVAL': -1e+31,
+                       'FORMAT': 'F6.1',
+                       'LABLAXIS': 'H rate',
+                       'SCALETYP': 'log',
+                       'UNITS': 'counts/s',
+                       'VALIDMAX': 1000.,
+                       'VALIDMIN': 0.,
+                       'VAR_TYPE': 'data'}),
+            'Energy': dm.dmarray(
+                np.logspace(1, 3, 20),
+                attrs={'CATDESC': 'Energy bins for H',
+                       'FIELDNAM': 'H_Rate',
+                       'FILLVAL': -1e+31,
+                       'FORMAT': 'F6.1',
+                       'LABLAXIS': 'Energy',
+                       'SCALETYP': 'log',
+                       'UNITS': 'keV',
+                       'VALIDMAX': 2000.,
+                       'VALIDMIN': 0.,
+                       'VAR_TYPE': 'support_data'}),
+            })
+
+    def test_replace_invalid(self):
+        """Test replacing invalid values with NaN"""
+        self.sd['B_vec'][5, 0] = -1e31
+        self.sd['B_vec'][10, 1] = 1.e4
+        self.sd['B_vec'][15, 2] = -1.e4
+        out = self.sd['B_vec'].replace_invalid()
+        self.assertTrue(np.isnan(out[5, 0]))
+        self.assertTrue(np.isnan(out[10, 1]))
+        self.assertTrue(np.isnan(out[15, 2]))
+        self.assertFalse(np.isnan(out[:5, 0]).any())
+        self.assertFalse(np.isnan(out[6:, 0]).any())
+        self.assertFalse(np.isnan(out[:10, 1]).any())
+        self.assertFalse(np.isnan(out[11:, 1]).any())
+        self.assertFalse(np.isnan(out[:15, 2]).any())
+        self.assertFalse(np.isnan(out[16:, 2]).any())
+
+    def test_get_deltas(self):
+        """Get delta plus/minus vars"""
+        self.assertEqual((), self.sd.get_deltas('B_vec'))
+        self.sd['B_err_lo'] = dm.dmarray(
+            np.tile([.2, .3, .4], (self.sd['B_vec'].shape[0], 1)),
+            attrs={'CATDESC': 'Magnetic field error, minus side',
+                   'DEPEND_0': 'Epoch',
+                   'DEPEND_1': 'dim',
+                   'FIELDNAM': 'B_err_lo',
+                   'FILLVAL': -1.e31,
+                   'FORMAT': 'F6.1',
+                   'LABLAXIS': 'Mag unc, minus',
+                   'LABL_PTR_1': 'B_labels',
+                   'UNITS': 'nT',
+                   'VALIDMAX': 1000.,
+                   'VALIDMIN': -1000.,
+                   'VAR_TYPE': 'support_data',})
+        self.sd['B_vec'].attrs.update({
+            'DELTA_MINUS_VAR': 'B_err_lo',
+            'DELTA_PLUS_VAR': 'B_err_lo',
+        })
+        res = self.sd.get_deltas('B_vec')
+        self.assertEqual(1, len(res))
+        np.testing.assert_array_equal(
+            self.sd['B_err_lo'], res[0])
+        self.sd['B_err_hi'] = dm.dmarray(
+            np.tile([.1, .15, .17], (self.sd['B_vec'].shape[0], 1)),
+            attrs={'CATDESC': 'Magnetic field error, plus side',
+                   'DEPEND_0': 'Epoch',
+                   'DEPEND_1': 'dim',
+                   'FIELDNAM': 'B_err_hi',
+                   'FILLVAL': -1.e31,
+                   'FORMAT': 'F6.1',
+                   'LABLAXIS': 'Mag unc, plus',
+                   'LABL_PTR_1': 'B_labels',
+                   'UNITS': 'nT',
+                   'VALIDMAX': 1000.,
+                   'VALIDMIN': -1000.,
+                   'VAR_TYPE': 'support_data',})
+        self.sd['B_vec'].attrs['DELTA_PLUS_VAR'] = 'B_err_hi'
+        res = self.sd.get_deltas('B_vec')
+        self.assertEqual(2, len(res))
+        np.testing.assert_array_equal(
+            self.sd['B_err_lo'], res[0])
+        np.testing.assert_array_equal(
+            self.sd['B_err_hi'], res[1])
+        del self.sd['B_vec'].attrs['DELTA_PLUS_VAR']
+        with self.assertRaises(ValueError) as cm:
+            self.sd.get_deltas('B_vec')
+        self.assertEqual('Only one of DELTA_(MINUS|PLUS)_VAR specified.', str(cm.exception))
+        self.sd['B_vec'].attrs['DELTA_PLUS_VAR'] = 'B_err_hi'
+        del self.sd['B_vec'].attrs['DELTA_MINUS_VAR']
+        with self.assertRaises(ValueError) as cm:
+            self.sd.get_deltas('B_vec')
+        self.assertEqual('Only one of DELTA_(MINUS|PLUS)_VAR specified.', str(cm.exception))
+
+    def test_plot_as_line(self):
+        """See if a variable should be a lineplot"""
+        self.assertTrue(self.sd['B_vec'].plot_as_line())
+        self.assertTrue(self.sd['B_mag'].plot_as_line())
+        self.assertFalse(self.sd['H_Rate'].plot_as_line())
+        for k in ('B_vec', 'B_mag', 'H_Rate'):
+            del self.sd[k].attrs['DISPLAY_TYPE']
+        self.assertTrue(self.sd['B_vec'].plot_as_line())
+        self.assertTrue(self.sd['B_mag'].plot_as_line())
+        self.assertFalse(self.sd['H_Rate'].plot_as_line())
+
+    def test_main_vars(self):
+        """Get list of main variables"""
+        expected = ['B_mag', 'B_vec', 'H_Rate']
+        out = self.sd.main_vars()
+        self.assertEqual(expected, out)
+        del self.sd['B_mag'].attrs['VAR_TYPE']
+        expected = ['B_vec', 'H_Rate']
+        out = self.sd.main_vars()
+        self.assertEqual(expected, out)
+        for v in self.sd.values():
+            if 'VAR_TYPE' in v.attrs:
+                del v.attrs['VAR_TYPE']
+        expected = ['B_mag', 'B_vec', 'H_Rate']
+        out = self.sd.main_vars()
+        self.assertEqual(expected, out)
+
+    def test_lineplot_timeseries(self):
+        """Plot a timeseries"""
+        ax = self.sd.lineplot('B_vec')
+        lines = ax.get_lines()
+        self.assertEqual(3, len(lines))
+        for i in range(3):
+            np.testing.assert_array_equal(lines[i].get_xdata(), self.sd['Epoch'])
+            np.testing.assert_array_equal(lines[i].get_ydata(),
+                                          self.sd['B_vec'][:, i])
+        self.assertEqual('B (nT)', ax.get_ylabel())
+        self.assertEqual('UT', ax.get_xlabel())
+        self.assertEqual(['X', 'Y', 'Z'], [t.get_text() for t in ax.get_legend().texts])
+        fig = ax.get_figure()
+        self.assertEqual(1, len(fig.texts))
+        self.assertEqual(self.sd['B_vec'].attrs['CATDESC'],
+                         fig.texts[0].get_text())
+
+    def test_lineplot_timeseries_1D(self):
+        """Plot a timeseries with a single line"""
+        ax = self.sd.lineplot('B_mag')
+        lines = ax.get_lines()
+        self.assertEqual(1, len(lines))
+        np.testing.assert_array_equal(lines[0].get_xdata(), self.sd['Epoch'])
+        np.testing.assert_array_equal(lines[0].get_ydata(), self.sd['B_mag'])
+        self.assertEqual('B (nT)', ax.get_ylabel())
+        self.assertEqual('UT', ax.get_xlabel())
+        self.assertIs(None, ax.get_legend())
+
+    def test_lineplot_timeseries_target_fig(self):
+        """Plot a timeseries, specify a figure"""
+        import matplotlib.pyplot
+        fig = matplotlib.pyplot.figure()
+        ax = self.sd.lineplot('B_vec', target=fig)
+        self.assertIs(ax.get_figure(), fig)
+        self.assertEqual(0, len(fig.texts))
+
+    def test_lineplot_timeseries_target_ax(self):
+        """Plot a timeseries, specify an AxesSubplot"""
+        import matplotlib.pyplot
+        fig = matplotlib.pyplot.figure()
+        ax_in = fig.add_subplot(111)
+        ax = self.sd.lineplot('B_vec', target=ax_in)
+        self.assertIs(fig, ax.get_figure())
+        self.assertIs(ax_in, ax)
+        self.assertEqual(0, len(fig.texts))
+        self.assertIs(None, ax.get_legend())
+
+    def test_lineplot_nolabel(self):
+        """Plot a timeseries without a line label"""
+        del self.sd['B_vec'].attrs['LABL_PTR_1']
+        ax = self.sd.lineplot('B_vec')
+        lines = ax.get_lines()
+        self.assertEqual(3, len(lines))
+        self.assertIs(None, ax.get_legend())
+
+    def test_lineplot_ts_w_fill(self):
+        """Plot a timeseries with fill data"""
+        self.sd['B_vec'][5, 0] = -1e31
+        self.sd['B_vec'][10, 1] = 1.e4
+        self.sd['B_vec'][15, 2] = -1.e4
+        ax = self.sd.lineplot('B_vec')
+        lines = ax.get_lines()
+        self.assertTrue(np.isnan(lines[0].get_ydata()[5]))
+        self.assertTrue(np.isnan(lines[1].get_ydata()[10]))
+        self.assertTrue(np.isnan(lines[2].get_ydata()[15]))
+        self.assertFalse(np.isnan(lines[0].get_ydata()[6:]).any())
+        self.assertFalse(np.isnan(lines[1].get_ydata()[11:]).any())
+        self.assertFalse(np.isnan(lines[2].get_ydata()[16:]).any())
+
+    def test_lineplot_ts_w_fill_and_errs(self):
+        """Plot a timeseries with errorbars"""
+        self.sd['B_vec'][5, 0] = -1e31
+        self.sd['B_vec'][10, 1] = 1.e4
+        self.sd['B_vec'][15, 2] = -1.e4
+        self.sd['B_err_lo'] = dm.dmarray(
+            np.tile([.2, .3, .4], (self.sd['B_vec'].shape[0], 1)),
+            attrs={'CATDESC': 'Magnetic field error, minus side',
+                   'DEPEND_0': 'Epoch',
+                   'DEPEND_1': 'dim',
+                   'FIELDNAM': 'B_err_lo',
+                   'FILLVAL': -1.e31,
+                   'FORMAT': 'F6.1',
+                   'LABLAXIS': 'Mag unc, minus',
+                   'LABL_PTR_1': 'B_labels',
+                   'UNITS': 'nT',
+                   'VALIDMAX': 1000.,
+                   'VALIDMIN': -1000.,
+                   'VAR_TYPE': 'support_data',})
+        self.sd['B_err_hi'] = dm.dmarray(
+            np.tile([.1, .15, .17], (self.sd['B_vec'].shape[0], 1)),
+            attrs={'CATDESC': 'Magnetic field error, plus side',
+                   'DEPEND_0': 'Epoch',
+                   'DEPEND_1': 'dim',
+                   'FIELDNAM': 'B_err_hi',
+                   'FILLVAL': -1.e31,
+                   'FORMAT': 'F6.1',
+                   'LABLAXIS': 'Mag unc, plus',
+                   'LABL_PTR_1': 'B_labels',
+                   'UNITS': 'nT',
+                   'VALIDMAX': 1000.,
+                   'VALIDMIN': -1000.,
+                   'VAR_TYPE': 'support_data',})
+        self.sd['B_vec'].attrs.update({
+            'DELTA_MINUS_VAR': 'B_err_lo',
+            'DELTA_PLUS_VAR': 'B_err_hi',
+        })
+        ax = self.sd.lineplot('B_vec')
+        lines = ax.get_lines()
+        self.assertEqual(3, len(lines))
+        import matplotlib.collections
+        errs = [c for c in ax.get_children()
+                if isinstance(c, matplotlib.collections.LineCollection)]
+        for i in range(3):
+            bottoms = np.array([s[0, 1] for s in errs[i].get_segments() if s.size])
+            tops = np.array([s[1, 1] for s in errs[i].get_segments() if s.size])
+            expected = self.sd['B_vec'][:, i] - self.sd['B_err_lo'][:, i]
+            valid = (self.sd['B_vec'][:, i] < 5e3) & (self.sd['B_vec'][:, i] > -5e3)
+            expected = expected[valid]
+            np.testing.assert_array_equal(expected, bottoms)
+            expected = self.sd['B_vec'][:, i] + self.sd['B_err_hi'][:, i]
+            expected = expected[valid]
+            np.testing.assert_array_equal(expected, tops)
+
+    def test_lineplot_ts_err_singlesided(self):
+        """Plot a timeseries with symmetric error bars"""
+        self.sd['B_err'] = dm.dmarray(
+            np.tile([.2, .3, .4], (self.sd['B_vec'].shape[0], 1)),
+            attrs={'CATDESC': 'Magnetic field error',
+                   'DEPEND_0': 'Epoch',
+                   'DEPEND_1': 'dim',
+                   'FIELDNAM': 'B_err',
+                   'FILLVAL': -1.e31,
+                   'FORMAT': 'F6.1',
+                   'LABLAXIS': 'Mag unc',
+                   'LABL_PTR_1': 'B_labels',
+                   'UNITS': 'nT',
+                   'VALIDMAX': 1000.,
+                   'VALIDMIN': -1000.,
+                   'VAR_TYPE': 'support_data',})
+        self.sd['B_vec'].attrs.update({
+            'DELTA_MINUS_VAR': 'B_err',
+            'DELTA_PLUS_VAR': 'B_err',
+        })
+        ax = self.sd.lineplot('B_vec')
+        lines = ax.get_lines()
+        self.assertEqual(3, len(lines))
+        import matplotlib.collections
+        errs = [c for c in ax.get_children()
+                if isinstance(c, matplotlib.collections.LineCollection)]
+        for i in range(3):
+            bottoms = np.array([s[0, 1] for s in errs[i].get_segments()])
+            tops = np.array([s[1, 1] for s in errs[i].get_segments()])
+            expected = self.sd['B_vec'][:, i] - self.sd['B_err'][:, i]
+            np.testing.assert_array_equal(expected, bottoms)
+            expected = self.sd['B_vec'][:, i] + self.sd['B_err'][:, i]
+            np.testing.assert_array_equal(expected, tops)
+
+    def test_spectrogram(self):
+        """Plot a spectrogram"""
+        ax = self.sd.spectrogram('H_Rate')
+        import matplotlib.collections
+        import matplotlib.dates
+        mesh = [c for c in ax.get_children() if isinstance(c, matplotlib.collections.QuadMesh)]
+        self.assertEqual(1, len(mesh))
+        mesh = mesh[0]
+        np.testing.assert_array_almost_equal(
+            np.array(self.sd['H_Rate']),
+            mesh.get_array().data.reshape(self.sd['H_Rate'].shape[::-1]).transpose())
+        expected_xlim = (matplotlib.dates.date2num(self.sd['Epoch'][0]),
+                         matplotlib.dates.date2num(self.sd['Epoch'][-1]))
+        xlim = ax.get_xlim()
+        self.assertAlmostEqual(expected_xlim[0], xlim[0])
+        self.assertAlmostEqual(expected_xlim[1], xlim[1])
+        ylim = ax.get_ylim()
+        e = self.sd['Energy']
+        expected_ylim = (e[0] * (e[0] / e[1]) ** 0.5,
+                         e[-1] * (e[-1] / e[-2]) ** 0.5)
+        self.assertAlmostEqual(expected_ylim[0], ylim[0], delta = 0.1 * e[0])
+        self.assertAlmostEqual(expected_ylim[1], ylim[1], delta = .1 * e[-1])
+        fig = ax.get_figure()
+        axes = fig.get_axes()
+        self.assertEqual(2, len(axes))
+        self.assertIs(ax, axes[0])
+        cb = axes[1]
+        ylim = cb.get_ylim()
+        self.assertAlmostEqual(self.sd['H_Rate'].min(), ylim[0])
+        self.assertAlmostEqual(self.sd['H_Rate'].max(), ylim[1])
+        self.assertEqual('UT', ax.get_xlabel())
+        self.assertEqual('Energy (keV)', ax.get_ylabel())
+        self.assertEqual('H rate (counts/s)', cb.get_ylabel())
+        self.assertEqual(1, len(fig.texts))
+        self.assertEqual(self.sd['H_Rate'].attrs['CATDESC'],
+                         fig.texts[0].get_text())
+
+    def test_plot_all(self):
+        """Plot everything in this SpaceData"""
+        fig = self.sd.plot()
+        axes = fig.get_axes()
+        self.assertEqual(4, len(axes))  # 3 plots, one colorbar
+        ylabels = [ax.get_ylabel() for ax in axes]
+        self.assertEqual(
+            ['B (nT)', 'B (nT)', 'Energy (keV)', 'H rate (counts/s)'], ylabels)
+        self.assertFalse(axes[1].get_legend() is None)
+        self.assertIs(axes[0].get_legend(), None)
+
+    def test_plot_one(self):
+        """Plot one array in this SpaceData"""
+        fig = self.sd.plot('B_vec')
+        axes = fig.get_axes()
+        self.assertEqual(1, len(axes))
+
+    def test_plot_some(self):
+        """Plot specfic variables in this SpaceData, specify figure"""
+        import matplotlib.pyplot
+        fig = matplotlib.pyplot.figure()
+        figout = self.sd.plot(['B_vec', 'H_Rate'], fig=fig)
+        self.assertIs(fig, figout)
+        axes = fig.get_axes()
+        self.assertEqual(3, len(axes))  # 2 plots, one colorbar
+        ylabels = [ax.get_ylabel() for ax in axes]
+        self.assertEqual(
+            ['B (nT)', 'Energy (keV)', 'H rate (counts/s)'], ylabels)
 
 
 if __name__ == "__main__":

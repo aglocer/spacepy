@@ -8,6 +8,7 @@ Copyright 2010-2012 Los Alamos National Security, LLC.
 """
 
 import datetime as dt
+import matplotlib.axes
 import unittest
 import warnings
 import numpy as np
@@ -160,7 +161,7 @@ class SEATestsUniform(unittest.TestCase):
     def testSeaPlotShowFalse(self):
         '''Test that plot method (show=False) returns axes'''
         ax = self.obj.plot(show=False)
-        self.assertTrue(hasattr(ax, '_axes_class'))
+        self.assertTrue(isinstance(ax, matplotlib.axes.SubplotBase))
 
 
 class SEATestsUniWithBad(unittest.TestCase):
@@ -232,6 +233,36 @@ class SeaClassExceptions(unittest.TestCase):
                        self.epochs, verbose=False)
         re_fun = self.obj.restoreepochs
         self.assertRaises(AttributeError, re_fun)
+
+    def testWarnNonContiguous(self):
+        """Warn if time inputs appear non-contiguous/non-monotonic"""
+        with spacepy_testing.assertWarns(self, message='Input time not monotonic;'
+                                         ' results are unlikely to be valid.'):
+            seapy.Sea(self.unidata, self.time[::-1], self.epochs, verbose=False)
+        time = [dt.datetime(2020, 1, 1) + dt.timedelta(seconds = 60 * i)
+                for i in range(202)]
+        del time[2:4]  # Introduce a gap
+        with spacepy_testing.assertWarns(self, message='Input time not contiguous;'
+                                         ' results are unlikely to be valid.'):
+            seapy.Sea(self.unidata, time, self.epochs, verbose=False)
+        time = [dt.datetime(2020, 1, 1) + dt.timedelta(seconds = 60 * i)
+                for i in range(200)]
+        time[2] = dt.datetime(2019, 12, 31, 23, 59, 59)  # Go backwards
+        with spacepy_testing.assertWarns(self, message='Input time not monotonic or contiguous;'
+                                         ' results are unlikely to be valid.'):
+            seapy.Sea(self.unidata, time, self.epochs, verbose=False)
+        time = [dt.datetime(2020, 1, 1) - dt.timedelta(seconds = 60 * i)
+                for i in range(200)]
+        with spacepy_testing.assertWarns(self, message='Input time not monotonic;'
+                                         ' results are unlikely to be valid.'):
+            seapy.Sea(self.unidata, time, self.epochs, verbose=False)
+
+    def testWarnTooManyEpochs(self):
+        """Warn if there are too many time epochs"""
+        with spacepy_testing.assertWarns(self, message='Too many epochs;'
+                                         ' results are unlikely to be valid.'):
+            seapy.Sea(self.unidata, self.time, list(range(0, 202, 2)), verbose=False)
+
 
 class SEATests2dUniform(unittest.TestCase):
     """Tests of the sea method using uniform input"""
