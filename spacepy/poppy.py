@@ -60,6 +60,7 @@ Copyright 2010 Los Alamos National Security, LLC.
 """
 
 import bisect
+import ctypes
 import sys
 import warnings
 import datetime as dt
@@ -67,12 +68,7 @@ import datetime as dt
 import numpy as np
 
 from spacepy import help
-#Try to pull in the C version. Assumption is that if you import this module,
-#you want to do some association analysis, so the overhead in the import
-#is OK.
 from spacepy import lib
-if lib.have_libspacepy:
-    import ctypes
 import spacepy.toolbox as tb
 import spacepy.datamodel as dm
 
@@ -124,6 +120,12 @@ class PPro(object):
     #NB: P2 is the "master" timescale, P1 gets shifted by lags
     #Add lag to p1 to reach p2's timescale, subtract lag from p2 to reach p1's
 
+    ci = None
+    """Upper and lower confidence limits for the association number"""
+
+    conf_above = None
+    """Confidence that the association number is above the asymptotic"""
+
     def __init__(self, process1, process2, lags=None, winhalf=None, verbose=False):
         self.process1 = process1
         self.process2 = process2
@@ -174,28 +176,22 @@ class PPro(object):
         """
 
         #check for existence of lags and winhalf
-        try:
-            if u:
-                self.lags = u
-            assert self.lags
-            if h != None:
-                self.winhalf = h
-            assert self.winhalf != None
+        if u is not None:
+            self.lags = u
+        if h is not None:
+            self.winhalf = h
+        if self.lags is None or self.winhalf is None:
             if self.verbose:
-                print('calculating association for series of length %s at %d lags' \
-                    % ([len(self.process1), len(self.process2)], len(self.lags)))
-        except:
-            if self.verbose:
-                return 'assoc error: attributes lags and winhalf must be populated'
-            else:
-                return None
+                print('assoc error: attributes lags and winhalf must be populated')
+            return
+        if self.verbose:
+            print('calculating association for series of length %s at %d lags'
+                  % ([len(self.process1), len(self.process2)], len(self.lags)))
 
         import matplotlib as mpl
         import matplotlib.dates as mpd
-        if lib.have_libspacepy == False:
-            dtype = 'int64'
-        else:
-            dtype = 'int' + str(ctypes.sizeof(ctypes.c_long) * 8)
+        dtype = 'int' + str(ctypes.sizeof(ctypes.c_long) * 8
+                            if lib.have_libspacepy else 64)
 
         ##Method 1 - use tb.tOverlap
         #create list for association number
@@ -337,11 +333,9 @@ class PPro(object):
         ax0.set_ylim((y[0], y[-1]))
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
-        if cbar_label == None:
-            if plt.rcParams['text.usetex']:
-                cbar_label = r'\% confident above asymptotic association'
-            else:
-                cbar_label = r'% confident above asymptotic association'
+        if cbar_label is None:
+            cbar_label = '{} confident above asymptotic association'.format(
+                r'\%' if plt.rcParams['text.usetex'] else r'%')
         plt.colorbar(cax, fraction=0.05).set_label(cbar_label)
         return fig
 
@@ -396,23 +390,19 @@ class PPro(object):
             x = [i / xscale for i in x]
         ax0.set_xlim((min(x), max(x)))
 
-        ci = None
+        ci = self.ci
         if norm:
-            if hasattr(self, 'ci'):
+            if self.ci is not None:
                 ci = [[j / self.asympt_assoc for j in self.ci[i]]
                     for i in [0,1]]
             asympt_assoc = 1.0
             assoc_total = [assoc / self.asympt_assoc
                            for assoc in self.assoc_total]
         else:
-            try:
-                ci = self.ci
-            except AttributeError:
-                pass
             asympt_assoc = self.asympt_assoc
             assoc_total = self.assoc_total
 
-        if ci != None:
+        if ci is not None:
             if transparent:
                 ax0.fill_between(x, ci[0], ci[1],
                                  edgecolor='none', facecolor='blue', alpha=0.5)
@@ -425,7 +415,7 @@ class PPro(object):
         ax0.plot(x, assoc_total, 'b-', lw=1.0)
         if asympt:
             ax0.plot([x[0], x[-1]], [asympt_assoc]*2, 'r--', lw=1.0)
-        if ylabel == None:
+        if ylabel is None:
             if norm:
                 plt.ylabel(
                     'Normalized Association Number n(u, h={0}) / n({1}, h={0})'.format(
@@ -438,14 +428,13 @@ class PPro(object):
         else:
             plt.ylabel(ylabel)
         plt.xlabel(xlabel)
-        if title != None:
+        if title is not None:
             plt.title(title)
 
         if show:
             plt.show()
             return None
-        else:
-            return fig
+        return fig
 
     def aa_ci(self, inter, n_boots=1000, seed=None):
         """Get bootstrap confidence intervals for association number
@@ -495,19 +484,23 @@ class PPro(object):
         conf_above = np.empty([len(lags)])
         long_size = ctypes.sizeof(ctypes.c_long) * 8
 
-        if seed != None:
+        if seed is not None:
             np.random.seed(seed)
-            minseed = -2 ** (long_size - 1)
-            maxseed = 2 ** (long_size - 1) - 1
+            # numpy random seeds must always be 32-bit
+            seed_size = long_size if lib.have_libspacepy else 32
+            minseed = -2 ** (seed_size - 1)
+            maxseed = 2 ** (seed_size - 1) - 1
             #randint used to be system-size signed integer only.
             #so used that and cast to the required unsigned later
             #cast does not lose entropy: negative numbers map to high positives.
             #For reproducibility, keep doing that even though dtype
             #kwarg now available.
             lag_seeds = np.random.randint(minseed, maxseed, [len(lags)])
+            if not lib.have_libspacepy:
+                lag_seeds = np.require(lag_seeds, np.int32)
             newtype = np.dtype('u' + str(lag_seeds.dtype))
             lag_seeds = np.require(lag_seeds, dtype=newtype)
-        if lib.have_libspacepy == False:
+        if not lib.have_libspacepy:
             for i in range(len(lags)):
                 if seed != None:
                     np.random.seed(lag_seeds[i])
@@ -521,7 +514,7 @@ class PPro(object):
             dtype = 'int' + str(long_size)
             assoc_totals = np.empty([len(lags), n_boots],
                                     dtype=dtype, order='C')
-            if seed == None:
+            if seed is None:
                 clock_seed = ctypes.c_int(1)
                 lag_seeds = np.empty([len(lags)], dtype=dtype)
             else:
@@ -542,7 +535,6 @@ class PPro(object):
                                                          self.asympt_assoc)
         self.ci = [ci_low, ci_high]
         self.conf_above = conf_above
-        return None
 
 
 #Functions outside class
@@ -583,12 +575,12 @@ def plot_two_ppro(pprodata, pproref, ratio=None, norm=False,
         if provided, a list of tickmarks for the Y axis
     """
     import matplotlib.pyplot as plt
-    if ratio == None:
+    if ratio is None:
         ratio = float(pproref.asympt_assoc) / pprodata.asympt_assoc
     lags = pproref.lags
     nlags = len(lags)
     assert lags[:] == pprodata.lags[:]
-    if xscale != None:
+    if xscale is not None:
         lags = [float(i) / xscale for i in lags]
     fig = plt.figure(figsize=figsize, dpi=dpi)
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
@@ -632,11 +624,8 @@ def plot_two_ppro(pprodata, pproref, ratio=None, norm=False,
                      interpolate=True)
     ax0.plot(lags, scaleddata, lw=1.0)
     ax0.plot(lags, scaledref, 'r--', lw=1.0)
-    if ylim[0] == None:
-        ax0.set_ylim(bottom=0)
-    else:
-        ax0.set_ylim(bottom=ylim[0])
-    if ylim[1] != None:
+    ax0.set_ylim(bottom = 0 if ylim[0] is None else ylim[0])
+    if ylim[1] is not None:
         ax0.set_ylim(top=ylim[1])
     if log:
         ax0.set_yscale('log', nonposy='clip')
@@ -724,30 +713,26 @@ def boots_ci(data, n, inter, func, seed=None, target=None, sample_size=None, use
 
     n_els = len(data)
     if n_els <= 2:
-        if target == None:
-            return np.nan, np.nan
-        else:
-            return np.nan, np.nan, np.nan
-    if sample_size == None:
+        return np.nan, np.nan if target is None else np.nan, np.nan, np.nan
+    if sample_size is None:
         sample_size = n_els
-    if (lib.have_libspacepy==False) or (usepy==True):
-        if nretvals>1:
-            surr_quan = np.empty([n,nretvals])
-        else:
-            surr_quan = np.empty([n])
-        if seed != None:
+    if not lib.have_libspacepy or usepy:
+        surr_quan = np.empty([n, nretvals] if nretvals > 1 else [n])
+        if seed is not None:
             np.random.seed(seed)
         ran_el = np.random.randint(n_els, size=[n, sample_size])
         for i in range(int(n)): #compute n bootstrapped series
             surr_ser = np.array([data[rec] for rec in ran_el[i, :]]) #resample w/ replace
             surr_quan[i] = func(surr_ser) #get desired quantity from surrogates
-        surr_quan = surr_quan[surr_quan.argsort(axis=0)[:,0]]
-        #surr_quan.sort()
+        if len(surr_quan.shape) == 1:
+            surr_quan.sort()
+        else:
+            surr_quan = surr_quan[surr_quan.argsort(axis=0)[:,0]]
     else:
         n = int(n)
         data = (ctypes.c_double * n_els)(*data)
         surr_ser = (ctypes.c_double * (n * sample_size))()
-        if seed == None:
+        if seed is None:
             seed = 0
             clock_seed = ctypes.c_int(1)
         else:
@@ -767,11 +752,10 @@ def boots_ci(data, n, inter, func, seed=None, target=None, sample_size=None, use
             pul[:,nn] = np.percentile(surr_quan[:,nn], (perc_low,perc_high))
     else:
         pul = np.percentile(surr_quan, (perc_low,perc_high))
-    if target == None:
+    if target is None:
         return pul[0], pul[1]
-    else:
-        vp = value_percentile(surr_quan, target)
-        return pul[0], pul[1], 100.0 - vp
+    vp = value_percentile(surr_quan, target)
+    return pul[0], pul[1], 100.0 - vp
 
 
 def value_percentile(sequence, target):
@@ -856,14 +840,10 @@ def applyRefractory(process1, period):
         t2 = t1 + period
         inds = tb.tOverlapHalf([t1, t2], p1[1:])
         for idx in inds:
-            discard.append(p1.pop(idx+1))
+            discard.append(p1.pop(idx + 1))
         keep.append(p1.pop(0)) # put test element into keep array
-        done = len(p1)<2
+        done = len(p1) < 2
 
     if tickt:
         return spt.Ticktock(keep)
-    else:
-        if wasArr:
-            return np.array(keep)
-        else:
-            return keep
+    return np.array(keep) if wasArr else keep

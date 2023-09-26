@@ -4,15 +4,13 @@
 """
 This package provides a Python interface to the Common Data Format (CDF)
 library used for many NASA missions, available at http://cdf.gsfc.nasa.gov/.
-It is targeted at Python 2.6+ and should work without change on either
-Python 2 or Python 3.
 
 The interface is intended to be 'pythonic' rather than reproducing the
-C interface. To open or close a CDF and access its variables, see the :class:`CDF`
-class. Accessing data within the variables is via the :class:`Var`
+C interface. To open or close a CDF and access its variables, see the `CDF`
+class. Accessing data within the variables is via the `Var`
 class. The :data:`lib` object provides access to some routines
 that affect the functionality of the library in general. The
-:mod:`~spacepy.pycdf.const` module contains constants useful for accessing
+`~spacepy.pycdf.const` module contains constants useful for accessing
 the underlying library.
 
 
@@ -105,7 +103,7 @@ class Library(object):
     C reference manual.
 
     Calling the C library directly requires knowledge of
-    :mod:`ctypes`.
+    `ctypes`.
 
     Instantiating this object loads the C library, see :doc:`/pycdf` docs
     for details.
@@ -157,7 +155,6 @@ class Library(object):
     .. automethod:: epoch16_to_tt2000
     .. automethod:: get_minmax
     .. automethod:: set_backward
-
     .. attribute:: supports_int8
 
        True if this library supports INT8 and TIME_TT2000 types; else False.
@@ -165,60 +162,16 @@ class Library(object):
     .. automethod:: tt2000_to_datetime
     .. automethod:: tt2000_to_epoch
     .. automethod:: tt2000_to_epoch16
-
-    .. method:: v_datetime_to_epoch(datetime)
-    
-        A vectorized version of :meth:`datetime_to_epoch` which takes a
-        numpy array of datetimes as input and returns an array of epochs.
-
-    .. method:: v_datetime_to_epoch16(datetime)
-    
-        A vectorized version of :meth:`datetime_to_epoch16` which takes a
-        numpy array of datetimes as input and returns an array of epoch16.
-
-    .. method:: v_datetime_to_tt2000(datetime)
-    
-        A vectorized version of :meth:`datetime_to_tt2000` which takes a
-        numpy array of datetimes as input and returns an array of TT2000.
-
-    .. method:: v_epoch_to_datetime(epoch)
-    
-        A vectorized version of :meth:`epoch_to_datetime` which takes a
-        numpy array of epochs as input and returns an array of datetimes.
-
-    .. method:: v_epoch_to_tt2000(epoch)
-    
-        A vectorized version of :meth:`epoch_to_tt2000` which takes a
-        numpy array of epochs as input and returns an array of tt2000s.
-
-    .. method:: v_epoch16_to_datetime(epoch0, epoch1)
-    
-        A vectorized version of :meth:`epoch16_to_datetime` which takes
-        a numpy array of epoch16 as input and returns an array of datetimes.
-        An epoch16 is a pair of doubles; the input array's last dimension
-        must be two (and the returned array will have one fewer dimension).
-
-    .. method:: v_epoch16_to_tt2000(epoch16)
-    
-        A vectorized version of :meth:`epoch16_to_tt2000` which takes
-        a numpy array of epoch16 as input and returns an array of tt2000s.
-        An epoch16 is a pair of doubles; the input array's last dimension
-        must be two (and the returned array will have one fewer dimension).
-
-    .. method:: v_tt2000_to_datetime(tt2000)
-    
-        A vectorized version of :meth:`tt2000_to_datetime` which takes
-        a numpy array of tt2000 as input and returns an array of datetimes.
-
-    .. method:: v_tt2000_to_epoch(tt2000)
-    
-        A vectorized version of :meth:`tt2000_to_epoch` which takes
-        a numpy array of tt2000 as input and returns an array of epochs.
-
-    .. method:: v_tt2000_to_epoch16(tt2000)
-    
-        A vectorized version of :meth:`tt2000_to_epoch16` which takes
-        a numpy array of tt2000 as input and returns an array of epoch16.
+    .. automethod:: v_datetime_to_epoch
+    .. automethod:: v_datetime_to_epoch16
+    .. automethod:: v_datetime_to_tt2000
+    .. automethod:: v_epoch_to_datetime
+    .. automethod:: v_epoch_to_tt2000
+    .. automethod:: v_epoch16_to_datetime
+    .. automethod:: v_epoch16_to_tt2000
+    .. automethod:: v_tt2000_to_datetime
+    .. automethod:: v_tt2000_to_epoch
+    .. automethod:: v_tt2000_to_epoch16
 
     .. attribute:: libpath
 
@@ -232,6 +185,13 @@ class Library(object):
 
        Version of the CDF library, (version, release, increment, subincrement)
     """
+    supports_int8 = True
+    """True if this library supports INT8 and TIME_TT2000 types; else False."""
+    libpath = ''
+    """The path where pycdf found the CDF C library, potentially useful in
+       debugging."""
+    version = (0, 0, 0, '')
+    """Version of the CDF library"""
 
     _arm32 = platform.uname()[4].startswith('arm') and sys.maxsize <= 2 ** 32
     """Excuting on 32-bit ARM, which requires typepunned arguments"""
@@ -245,6 +205,7 @@ class Library(object):
         'CDF_TT2000_to_UTC_EPOCH': [ctypes.c_double, ctypes.c_longlong],
         'CDF_TT2000_to_UTC_EPOCH16': [ctypes.c_double, ctypes.c_longlong,
                                       ctypes.POINTER(ctypes.c_double * 2)],
+        'CDFgetFileBackward': [ctypes.c_int],
         'CDFlib': [ctypes.c_long, ctypes.c_long],
         'CDFsetFileBackward': [None, ctypes.c_long],
         'computeEPOCH': [ctypes.c_double] + [ctypes.c_long] * 7,
@@ -318,10 +279,9 @@ class Library(object):
         inc = inc.value
         sub = sub.value
         self.version = (ver, rel, inc, sub)
-        self._del_middle_rec_bug = ver < 3 or (ver == 3 and
-                                               (rel < 4 or
-                                                (rel == 4 and inc < 1)))
-        self.supports_int8 = (ver > 3 or (ver == 3 and rel >=4))
+        if self.version[:3] < (3, 5):
+            raise RuntimeError('pycdf requires CDF library 3.5')
+        self.supports_int8 = True  # 3.4.1 for INT8, we require 3.5
 
         self.cdftypenames = {const.CDF_BYTE.value: 'CDF_BYTE',
                              const.CDF_CHAR.value: 'CDF_CHAR',
@@ -363,12 +323,7 @@ class Library(object):
         self.timetypes = [const.CDF_EPOCH.value,
                           const.CDF_EPOCH16.value,
                           const.CDF_TIME_TT2000.value]
-        if not self.supports_int8:
-            del self.cdftypenames[const.CDF_INT8.value]
-            del self.numpytypedict[const.CDF_INT8.value]
-            del self.cdftypenames[const.CDF_TIME_TT2000.value]
-            del self.numpytypedict[const.CDF_TIME_TT2000.value]
-        elif self._arm32:
+        if self._arm32:
             # Type-pun double arguments to variadic functions.
             # Calling convention for non-variadic functions with floats
             # is unique, but convention for ints is same as variadic.
@@ -439,19 +394,6 @@ class Library(object):
             else:
                 return retval
         self.v_tt2000_to_epoch16 = _v_tt2000_to_epoch16
-        if not self.supports_int8:
-            self.datetime_to_tt2000 = self._bad_tt2000
-            self.tt2000_to_datetime = self._bad_tt2000
-            self.v_datetime_to_tt2000 = self._bad_tt2000
-            self.v_tt2000_to_datetime = self._bad_tt2000
-            self.epoch_to_tt2000 = self._bad_tt2000
-            self.v_epoch_to_tt2000 = self._bad_tt2000
-            self.tt2000_to_epoch = self._bad_tt2000
-            self.v_tt2000_to_epoch = self._bad_tt2000
-            self.epoch_16_to_tt2000 =  self._bad_tt2000
-            self.v_epoch16_to_tt2000 = self._bad_tt2000
-            self.tt2000_to_epoch16 = self._bad_tt2000
-            self.v_tt2000_to_epoch16 = self._bad_tt2000
 
     @staticmethod
     def _find_lib():
@@ -605,9 +547,9 @@ class Library(object):
 
         Parameters
         ==========
-        args : various, see :mod:`ctypes`
+        args : various, see `ctypes`
             Passed directly to the CDF library interface. Useful
-            constants are defined in the :mod:`~pycdf.const` module.
+            constants are defined in the `~pycdf.const` module.
 
         Other Parameters
         ================
@@ -651,21 +593,30 @@ class Library(object):
 
         Parameters
         ==========
-        backward : boolean
-            Set backward compatible mode if True; clear it if False.
+        backward : bool, optional
+            Set backward compatible mode if True; clear it if False. If not
+            specified, will not change current setting.
+
+            .. versionchanged:: 0.5.0
+               Added ability to not change setting (previously defaulted
+               to setting backward compatible).
+
+        Returns
+        =======
+        bool
+            Previous value of backward-compatible mode.
+
+            .. versionadded:: 0.5.0
 
         Raises
         ======
         ValueError : if backward=False and underlying CDF library is V2
         """
-        if self.version[0] < 3:
-            if not backward:
-                raise ValueError(
-                    'Cannot disable backward-compatible mode for CDF version 2.')
-            else:
-                return
-        self._library.CDFsetFileBackward(const.BACKWARDFILEon if backward
-                                         else const.BACKWARDFILEoff)
+        former = bool(self._library.CDFgetFileBackward())
+        if backward is not None:
+            self._library.CDFsetFileBackward(
+                const.BACKWARDFILEon if backward else const.BACKWARDFILEoff)
+        return former
 
     def epoch_to_datetime(self, epoch):
         """
@@ -678,7 +629,7 @@ class Library(object):
 
         Returns
         =======
-        out : :class:`datetime.datetime`
+        out : `datetime.datetime`
             date and time corresponding to epoch. Invalid values are set to
             usual epoch invalid value, i.e. last moment of year 9999.
 
@@ -746,7 +697,7 @@ class Library(object):
 
         Parameters
         ==========
-        dt : :class:`datetime.datetime`
+        dt : `datetime.datetime`
             date and time to convert
 
         Returns
@@ -792,7 +743,7 @@ class Library(object):
 
         Returns
         =======
-        out : :class:`datetime.datetime`
+        out : `datetime.datetime`
             date and time corresponding to epoch. Invalid values are set to
             usual epoch invalid value, i.e. last moment of year 9999.
 
@@ -840,7 +791,7 @@ class Library(object):
 
         Parameters
         ==========
-        dt :  :class:`datetime.datetime`
+        dt :  `datetime.datetime`
             date and time to convert
 
         Returns
@@ -894,7 +845,7 @@ class Library(object):
         """
         Convert CDF EPOCH to matplotlib number.
 
-        Same output as :func:`~matplotlib.dates.date2num` and useful for
+        Same output as `~matplotlib.dates.date2num` and useful for
         plotting large data sets without converting the times through datetime.
 
         Parameters
@@ -968,7 +919,7 @@ class Library(object):
 
         Returns
         =======
-        out : :class:`datetime.datetime`
+        out : `datetime.datetime`
             date and time corresponding to epoch. Invalid values are set to
             usual epoch invalid value, i.e. last moment of year 9999.
 
@@ -1019,7 +970,7 @@ class Library(object):
 
         Parameters
         ==========
-        dt :  :class:`datetime.datetime`
+        dt :  `datetime.datetime`
             date and time to convert
 
         Returns
@@ -1052,7 +1003,7 @@ class Library(object):
 
         Parameters
         ==========
-        dt :  :class:`datetime.datetime`
+        dt :  `datetime.datetime`
             date and time to convert
 
         Returns
@@ -1204,7 +1155,7 @@ class Library(object):
         Parameters
         ==========
         cdftype : int
-            CDF type number from :mod:`~spacepy.pycdf.const`
+            CDF type number from `~spacepy.pycdf.const`
 
         Raises
         ======
@@ -1243,6 +1194,93 @@ class Library(object):
         else:
             raise ValueError('Unknown data type: {}'.format(cdftype))
         return (inf.min, inf.max)
+
+    # Stubs of vectorized functions for documentation; actual versions
+    # are populated when class instantiated.
+
+    def v_datetime_to_epoch(self, datetime):
+        """A vectorized version of `datetime_to_epoch`.
+
+        Takes a numpy array of datetimes as input and returns an array of
+        epochs.
+        """
+        pass
+
+    def v_datetime_to_epoch16(self, datetime):
+        """A vectorized version of `datetime_to_epoch16`.
+
+        Takes a numpy array of datetimes as input and returns an array of
+        epoch16.
+        """
+        pass
+
+    def v_datetime_to_tt2000(self, datetime):
+        """A vectorized version of `datetime_to_tt2000`.
+
+        Takes a numpy array of datetimes as input and returns an array of
+        TT2000.
+        """
+        pass
+
+    def v_epoch_to_datetime(self, epoch):
+        """A vectorized version of `epoch_to_datetime`.
+
+        Takes a numpy array of epochs as input and returns an array of
+        datetimes.
+        """
+        pass
+
+    def v_epoch_to_tt2000(self, epoch):
+        """A vectorized version of `epoch_to_tt2000`.
+
+        Takes a numpy array of epochs as input and returns an array of
+        tt2000s.
+        """
+        pass
+
+    def v_epoch16_to_datetime(self, epoch):
+        """A vectorized version of `epoch16_to_datetime`.
+
+        Takes a numpy array of epoch16 as input and returns an array of
+        datetimes. An epoch16 is a pair of doubles; the input array's last
+        dimension must be two (and the returned array will have one fewer
+        dimension).
+        """
+        pass
+
+    def v_epoch16_to_tt2000(self, epoch16):
+        """A vectorized version of `epoch16_to_tt2000`.
+
+        Takes a numpy array of epoch16 as input and returns an array of
+        tt2000s. An epoch16 is a pair of doubles; the input array's last
+        dimension must be two (and the returned array will have one fewer
+        dimension).
+        """
+        pass
+
+    def v_tt2000_to_datetime(self, tt2000):
+        """A vectorized version of `tt2000_to_datetime`.
+
+        Takes a numpy array of tt2000 as input and returns an array of
+        datetimes.
+        """
+        pass
+
+    def v_tt2000_to_epoch(self, tt2000):
+        """A vectorized version of `tt2000_to_epoch`.
+
+        Takes a numpy array of tt2000 as input and returns an array of
+        epochs.
+        """
+        pass
+
+    def v_tt2000_to_epoch16(self, tt2000):
+        """A vectorized version of `tt2000_to_epoch16`.
+
+        Takes a numpy array of tt2000 as input and returns an array of
+        epoch16.
+        """
+        pass
 
 
 def download_library():
@@ -1317,8 +1355,8 @@ class CDFException(Exception):
     """
     Base class for errors or warnings in the CDF library.
 
-    Not normally used directly, but in subclasses :class:`CDFError`
-    and :class:`CDFWarning`.
+    Not normally used directly, but in subclasses `CDFError`
+    and `CDFWarning`.
 
     Error messages provided by this class are looked up from the underlying
     C library.
@@ -1380,7 +1418,7 @@ class CDFWarning(CDFException, UserWarning):
         ================
         level : int
             optional (default 3), how far up the stack the warning should
-            be reported. Passed directly to :class:`warnings.warn`.
+            be reported. Passed directly to `warnings.warn`.
         """
         warnings.warn(self, self.__class__, level)
 
@@ -1391,16 +1429,16 @@ class EpochError(Exception):
 
 
 def _compress(obj, comptype=None, param=None):
-    """Set or check the compression of a :py:class:`pycdf.CDF` or :py:class:`pycdf.Var`
+    """Set or check the compression of a `pycdf.CDF` or `pycdf.Var`
 
     @param obj: object on which to set or check compression
-    @type obj: :py:class:`pycdf.CDF` or :py:class:`pycdf.Var`
+    @type obj: `pycdf.CDF` or `pycdf.Var`
     @param comptype: type of compression to change to, see CDF C reference
                      manual section 4.10. Constants for this parameter
-                     are in :py:mod:`pycdf.const`. If not specified, will not change
+                     are in `pycdf.const`. If not specified, will not change
                      compression.
     @type comptype: ctypes.c_long
-    @param param: Compression parameter, see CDF CRM 4.10 and :py:mod:`pycdf.const`.
+    @param param: Compression parameter, see CDF CRM 4.10 and `pycdf.const`.
                   If not specified, will choose reasonable default (5 for
                   gzip; other types have only one possible parameter.)
     @type param: ctypes.c_long
@@ -1531,7 +1569,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
     CDF objects behave like a python `dictionary
     <http://docs.python.org/tutorial/datastructures.html#dictionaries>`_,
     where the keys are names of variables in the CDF, and the values,
-    :class:`Var` objects. As a dictionary, they are also `iterable
+    `Var` objects. As a dictionary, they are also `iterable
     <http://docs.python.org/tutorial/classes.html#iterators>`_ and it is easy
     to loop over all of the variables in a file. Some examples:
 
@@ -1541,7 +1579,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
                >>> for k in cdffile: #Alternate
                ...     print(k)
 
-        #. Get a :class:`Var` object for the variable named ``Epoch``:
+        #. Get a `Var` object for the variable named ``Epoch``:
 
                >>> epoch = cdffile['Epoch']
 
@@ -1575,17 +1613,17 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
     This last example can be very inefficient as it reads the entire CDF.
     Normally it's better to treat the CDF as a dictionary and access only
     the data needed, which will be pulled transparently from disc. See
-    :class:`Var` for more subtle examples.
+    `Var` for more subtle examples.
 
     Potentially useful dictionary methods and related functions:
 
       - `in <http://docs.python.org/reference/expressions.html#in>`_
       - `keys <http://docs.python.org/tutorial/datastructures.html#dictionaries>`_
-      - :py:func:`len`
+      - `len`
       - `list comprehensions
         <http://docs.python.org/tutorial/datastructures.html#list-comprehensions>`_
-      - :py:func:`sorted`
-      - :py:func:`~spacepy.toolbox.dictree`
+      - `sorted`
+      - `~spacepy.toolbox.dictree`
 
     The CDF user's guide section 2.2 has more background information on CDF
     files.
@@ -1593,7 +1631,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
     The :attr:`~CDF.attrs` Python attribute acts as a dictionary
     referencing CDF attributes (do not confuse the two); all the
     dictionary methods above also work on the attribute dictionary.
-    See :class:`gAttrList` for more on the dictionary of global
+    See `gAttrList` for more on the dictionary of global
     attributes.
 
     Creating a new CDF from a master (skeleton) CDF has similar syntax to
@@ -1610,7 +1648,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         >>> cdffile = pycdf.CDF('cdf_filename.cdf', '')
 
     When CDFs are created in this way, they are opened read-write, see
-    :py:meth:`readonly` to change.
+    :meth:`readonly` to change.
 
     By default, new CDFs (without a master) are created in version 3
     format. To create a version 2 (backward-compatible) CDF, use
@@ -1625,7 +1663,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         >>> cdffile['new_variable_name'] = [1, 2, 3, 4]
 
     or, if more control is needed over the type and dimensions, use
-    :py:meth:`new`.
+    :meth:`new`.
 
     Although it is supported to assign Var objects to Python variables
     for convenience, there are some minor pitfalls that can arise when
@@ -1688,7 +1726,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
     .. attribute:: CDF.attrs
 
        Global attributes for this CDF in a dict-like format.
-       See :class:`gAttrList` for details.
+       See `gAttrList` for details.
 
     .. attribute:: CDF.backward
 
@@ -1715,6 +1753,9 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
     .. automethod:: version
 
     """
+    backward = False
+    """True if this CDF was created in backward-compatible mode."""
+
     def __init__(self, pathname, masterpath=None, create=None, readonly=None,
                  encoding='utf-8'):
         """Open or create a CDF file.
@@ -1749,7 +1790,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         ========
         Open a CDF by creating a CDF object, e.g.:
             >>> cdffile = pycdf.CDF('cdf_filename.cdf')
-        Be sure to :py:meth:`pycdf.CDF.close` or :py:meth:`pycdf.CDF.save`
+        Be sure to :meth:`pycdf.CDF.close` or :meth:`pycdf.CDF.save`
         when done.
         """
         if masterpath is not None: #Looks like we want to create
@@ -1789,8 +1830,8 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
 
         Close CDF file if there is still a valid handle.
         .. note::
-            To avoid data loss, explicitly call :py:meth:`pycdf.CDF.close` 
-            or :py:meth:`pycdf.CDF.save`.
+            To avoid data loss, explicitly call :meth:`pycdf.CDF.close` 
+            or :meth:`pycdf.CDF.save`.
         """
         if self._opened:
             self.close()
@@ -1831,7 +1872,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         @param name: Name or number of the CDF variable
         @type name: string or int
         @return: CDF variable named or numbered L{name}
-        @rtype: :py:class:`pycdf.Var`
+        @rtype: `pycdf.Var`
         @raise KeyError: for pretty much any problem in lookup
         @note: variable numbers may change if variables are added or removed.
         """
@@ -1849,7 +1890,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
 
         @param name: name or number of the variable to write
         @type name: str or int
-        @param data: data to write, or a :py:class:`pycdf.Var` to copy
+        @param data: data to write, or a `pycdf.Var` to copy
         """
         if isinstance(data, Var):
             self.clone(data, name)
@@ -1918,7 +1959,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         """Returns a string representation of the CDF
 
         This is an 'informal' representation in that it cannot be evaluated
-        directly to create a :py:class:`pycdf.CDF`, just the names, types, and sizes of all
+        directly to create a `pycdf.CDF`, just the names, types, and sizes of all
         variables. (Attributes are not listed.)
 
         @return: description of the variables in the CDF
@@ -1947,7 +1988,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
                      is set to error on warnings.
         .. note:
             Not intended for direct call; pass parameters to
-            :py:class:`pycdf.CDF` constructor.
+            `pycdf.CDF` constructor.
         """
 
         lib.call(const.OPEN_, const.CDF_, self.pathname, ctypes.byref(self._handle))
@@ -1970,7 +2011,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
                      is set to error on warnings.
         .. note:
             Not intended for direct call; pass parameters to
-            :py:class:`pycdf.CDF` constructor.
+            `pycdf.CDF` constructor.
         """
         lib.call(const.CREATE_, const.CDF_, self.pathname, ctypes.c_long(0),
                               (ctypes.c_long * 1)(0), ctypes.byref(self._handle))
@@ -1993,7 +2034,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
                      is set to error on warnings.
         .. note:
             Not intended for direct call; pass parameters to
-            :py:class:`pycdf.CDF` constructor.
+            `pycdf.CDF` constructor.
         """
 
         if os.path.exists(self.pathname):
@@ -2029,8 +2070,8 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
             name of the file to create
         sd : spacepy.datamodel.SpaceData
             data to put in the CDF. This structure cannot be nested,
-            i.e., it must contain only :class:`~spacepy.datamodel.dmarray`
-            and no :class:`~spacepy.datamodel.Spacedata` objects.
+            i.e., it must contain only `~spacepy.datamodel.dmarray`
+            and no `~spacepy.datamodel.Spacedata` objects.
         """
         with cls(filename, '') as cdffile:
             for k in sd:
@@ -2046,7 +2087,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
 
         Parameters
         ==========
-        args : various, see :py:mod:`ctypes`.
+        args : various, see `ctypes`.
             Passed directly to the CDF library interface. Useful
             constants are defined in the :doc:`const <pycdf_const>`
             module of this package.
@@ -2073,7 +2114,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
 
         Parameters
         ==========
-        zVar : :py:class:`Var`
+        zVar : `Var`
             variable to clone
 
         Other Parameters
@@ -2086,7 +2127,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
 
         Returns
         =======
-        out : :py:class:`Var`
+        out : `Var`
             The newly-created zVar in this CDF
         """
         if name is None:
@@ -2240,11 +2281,11 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         comptype : ctypes.c_long
             type of compression to change to, see CDF C reference manual
             section 4.10. Constants for this parameter are in
-            :mod:`~spacepy.pycdf.const`. If not specified, will not change
+            `~spacepy.pycdf.const`. If not specified, will not change
             compression.
         param : ctypes.c_long
             Compression parameter, see CDF CRM 4.10 and
-            :mod:`~spacepy.pycdf.const`.
+            `~spacepy.pycdf.const`.
             If not specified, will choose reasonable default (5 for gzip;
             other types have only one possible parameter.)
 
@@ -2290,14 +2331,14 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
         data
             data to store in the new variable. If this has a an
             ``attrs`` attribute (e.g.,
-            :class:`~spacepy.datamodel.dmarray`), it will be used to
+            `~spacepy.datamodel.dmarray`), it will be used to
             populate attributes of the new variable. Similarly the CDF
             type, record variance, etc. will, by default, be taken
             from `data` if it is a
-            :class:`~spacepy.pycdf.VarCopy`. This can be overridden by
+            `~spacepy.pycdf.VarCopy`. This can be overridden by
             specifying other keywords.
         type : ctypes.c_long
-            CDF type of the variable, from :mod:`~spacepy.pycdf.const`.
+            CDF type of the variable, from `~spacepy.pycdf.const`.
             See section 2.5 of the CDF user's guide for more information on
             CDF data types.
         recVary : boolean
@@ -2309,16 +2350,16 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
             size of each dimension of this variable, default zero-dimensional.
             Note this is the dimensionality as defined by CDF, i.e., for
             record-varying variables it excludes the leading record dimension.
-            See :py:class:`Var`.
+            See `Var`.
         n_elements : int
             number of elements, should be 1 except for CDF_CHAR,
             for which it's the length of the string.
         compress : ctypes.c_long
             Compression to apply to this variable, default None.
-            See :py:meth:`Var.compress`.
+            See :meth:`Var.compress`.
         compress_param : ctypes.c_long
             Compression parameter if compression used; reasonable default
-            is chosen. See :py:meth:`Var.compress`.
+            is chosen. See :meth:`Var.compress`.
         sparse : ctypes.c_long
 
             .. versionadded:: 0.2.3
@@ -2334,7 +2375,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
 
         Returns
         =======
-        out : :py:class:`Var`
+        out : `Var`
             the newly-created zVariable
 
         Raises
@@ -2409,9 +2450,6 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
                 and self.backward:
             raise ValueError('Cannot use EPOCH16, INT8, or TIME_TT2000 '
                              'in backward-compatible CDF')
-        if not lib.supports_int8 and \
-                type in (const.CDF_INT8, const.CDF_TIME_TT2000):
-            raise ValueError('INT8 and TIME_TT2000 require CDF library 3.4.0')
         if data is None:
             if type is None:
                 raise ValueError('Must provide either data or a CDF type.')
@@ -2446,9 +2484,6 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
                     for dimVary in dimVarys]
         if not hasattr(type, 'value'):
             type = ctypes.c_long(type)
-        if type.value == const.CDF_INT8.value and not lib.supports_int8:
-            raise ValueError(
-                '64-bit integer support require CDF library 3.4.0')
         if type.value in (const.CDF_EPOCH16.value, const.CDF_INT8.value,
                     const.CDF_TIME_TT2000.value) \
                 and self.backward:
@@ -2469,9 +2504,9 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
 
     def raw_var(self, name):
         """
-        Get a "raw" :class:`Var` object.
+        Get a "raw" `Var` object.
 
-        Normally a :class:`Var` will perform translation of values for
+        Normally a `Var` will perform translation of values for
         certain types (to/from Unicode for CHAR variables on Py3k,
         and to/from datetime for all time types). A "raw" object
         does not perform this translation, on read or write.
@@ -2518,8 +2553,8 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
 
         Returns
         =======
-        out : :py:class:`CDFCopy`
-            :class:`~spacepy.datamodel.SpaceData`-like object of all data
+        out : `CDFCopy`
+            `~spacepy.datamodel.SpaceData`-like object of all data
         """
         return CDFCopy(self)
 
@@ -2567,7 +2602,7 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
     attrs = property(
         _get_attrs, _set_attrs, None,
         """Global attributes for this CDF in a dict-like format.
-        See :class:`gAttrList` for details.
+        See `gAttrList` for details.
         """)
 
     def var_num(self, varname):
@@ -2727,14 +2762,14 @@ class CDF(MutableMapping, spacepy.datamodel.MetaMixin):
 
 class CDFCopy(spacepy.datamodel.SpaceData):
     """
-    A dictionary-like copy of all data and attributes in a :py:class:`CDF`
+    A dictionary-like copy of all data and attributes in a `CDF`
 
-    Data are :class:`VarCopy` objects, keyed by variable name.
+    Data are `VarCopy` objects, keyed by variable name.
     CDF attributes are in :attr:`attrs`. (I.e.,
-    data are accessed much like from a :class:`CDF`).
+    data are accessed much like from a `CDF`).
 
     Do not instantiate this class directly; use :meth:`~CDF.copy`
-    on an existing :class:`CDF`.
+    on an existing `CDF`.
 
     Examples
     --------
@@ -2751,7 +2786,7 @@ class CDFCopy(spacepy.datamodel.SpaceData):
         """Copies all data and attributes from a CDF
 
         @param cdf: CDF to take data from
-        @type cdf: :py:class:`pycdf.CDF`
+        @type cdf: `pycdf.CDF`
         """
         super(CDFCopy, self).__init__(((key, var.copy())
                                       for (key, var) in cdf.items()),
@@ -2768,7 +2803,7 @@ def concatCDF(cdfs, varnames=None, raw=False):
 
     Parameters
     ----------
-    cdfs : list of :class:`~spacepy.pycdf.Var`
+    cdfs : list of `~spacepy.pycdf.Var`
         Open CDFs, will be read from in order. Must be a list (cannot
         be an iterable, as all files need to be open).
     varnames : list of str
@@ -2779,7 +2814,7 @@ def concatCDF(cdfs, varnames=None, raw=False):
 
     Returns
     -------
-    :class:`~spacepy.datamodel.SpaceData`
+    `~spacepy.datamodel.SpaceData`
         data concatenated from each CDF, with all attributes from first.
         Non-record-varying data is also only from first, and record
         variance is only checked on the first!
@@ -2813,7 +2848,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
 
     This object does not directly store the data from the CDF; rather,
     it provides access to the data in a format that much like a Python
-    list or numpy :class:`~numpy.ndarray`.
+    list or numpy `~numpy.ndarray`.
     General list information is available in the python docs:
     `1 <http://docs.python.org/tutorial/introduction.html#lists>`_,
     `2 <http://docs.python.org/tutorial/datastructures.html#more-on-lists>`_,
@@ -2822,7 +2857,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
     The CDF user's guide, section 2.3, provides background on variables.
 
     .. note::
-        Not intended to be created directly; use methods of :class:`CDF` to gain access to a variable.
+        Not intended to be created directly; use methods of `CDF` to gain access to a variable.
 
     A record-varying variable's data are viewed as a hypercube of dimensions
     n_dims+1 (the extra dimension is the record number). They are indexed in
@@ -2951,11 +2986,11 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
 
     All data are, on read, converted to appropriate Python data
     types; EPOCH, EPOCH16, and TIME_TT2000 types are converted to
-    :class:`~datetime.datetime`. Data are returned in numpy arrays.
+    `~datetime.datetime`. Data are returned in numpy arrays.
 
     .. note::
         Although pycdf supports TIME_TT2000 variables, the Python
-        :class:`~datetime.datetime` object does not support leap
+        `~datetime.datetime` object does not support leap
         seconds. Thus, on read, any seconds past 59 are truncated
         to 59.999999 (59 seconds, 999 milliseconds, 999 microseconds).
 
@@ -2981,7 +3016,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
 
     The :attr:`~Var.attrs` Python attribute acts as a dictionary referencing
     zAttributes (do not confuse the two); all the dictionary methods above
-    also work on the attribute dictionary. See :class:`zAttrList` for more on
+    also work on the attribute dictionary. See `zAttrList` for more on
     the dictionary of attributes.
 
     With writing, as with reading, every attempt has been made to match the
@@ -3041,9 +3076,6 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
 
     >>> del Flux[5]
 
-    Due to the need to work around a bug in the CDF library, this operation
-    can be quite slow.
-    
     Delete *all data* from ``Flux``, but leave the variable definition intact:
 
     >>> del Flux[...]
@@ -3079,7 +3111,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
     .. attribute:: Var.attrs
 
        zAttributes for this zVariable in a dict-like format.
-       See :class:`zAttrList` for details.
+       See `zAttrList` for details.
     .. automethod:: compress
     .. automethod:: copy
     .. autoattribute:: dtype
@@ -3099,7 +3131,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
 
         Parameters
         ==========
-        cdf_file : :py:class:`pycdf.CDF`
+        cdf_file : `pycdf.CDF`
             CDF file containing this variable
         var_name : string
             name of this variable
@@ -3107,7 +3139,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         Other Parameters
         ================
         args
-            additional arguments passed to :py:meth:`_create`. If none,
+            additional arguments passed to :meth:`_create`. If none,
             opens an existing variable. If provided, creates a
             new one.
 
@@ -3135,7 +3167,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         self._attrlistref = weakref.ref(zAttrList(self))
 
     def __getitem__(self, key):
-        """Returns a slice from the data array. Details under :py:class:`pycdf.Var`.
+        """Returns a slice from the data array. Details under `pycdf.Var`.
 
         @return: The data from this variable
         @rtype: list-of-lists of appropriate type.
@@ -3184,11 +3216,6 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         only one dimension or it must specify all elements of the non-record
         dimensions. This is *not* a way to resize a variable!
 
-        Deleting records from the middle of a variable may be very slow in
-        some circumstances. To work around a bug in CDF library versions
-        3.4.0 and before, all the data must be read in, the requested deletions
-        done, and then all written back out.
-
         @param key: index or slice to delete
         @type key: int or slice
         @raise TypeError: if an attempt is made to delete from a non
@@ -3212,27 +3239,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         dimsize = hslice.dimsizes[0]
 
         self._call()
-        dangerous_delete = False
-        if lib._del_middle_rec_bug and \
-               (interval != 1 or (start != 0 and start + count < dimsize)):
-            #delete from middle is dangerous if only have one index entry
-            entries = ctypes.c_long(0)
-            lib.call(const.GET_, const.zVAR_nINDEXENTRIES_,
-                     ctypes.byref(entries))
-            dangerous_delete = (entries.value == 1)
-
-        if dangerous_delete:
-            data = self[...]
-            data = numpy.delete(
-                data,
-                numpy.arange(start, start + count * interval, interval),
-                0)
-            self[0:dimsize - count] = data
-            first_rec = dimsize - count
-            last_rec = dimsize - 1
-            lib.call(const.DELETE_, const.zVAR_RECORDS_,
-                     ctypes.c_long(first_rec), ctypes.c_long(last_rec))
-        elif interval == 1:
+        if interval == 1:
             first_rec = ctypes.c_long(start)
             last_rec = ctypes.c_long(start + count - 1)
             lib.call(const.DELETE_, const.zVAR_RECORDS_,
@@ -3293,7 +3300,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         return data
 
     def __setitem__(self, key, data):
-        """Puts a slice into the data array. Details under :py:class:`pycdf.Var`.
+        """Puts a slice into the data array. Details under `pycdf.Var`.
 
         @param key: index or slice to store
         @type key: int or slice
@@ -3390,7 +3397,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         @param dimVarys: array of VARY or NOVARY, variance for each dimension
         @type dimVarys: sequence of long
         @return: new variable with this name
-        @rtype: :py:class:`pycdf.Var`
+        @rtype: `pycdf.Var`
         @raise CDFError: if CDF library reports an error
         @raise CDFWarning: if CDF library reports a warning and interpreter
                            is set to error on warnings.
@@ -3427,7 +3434,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         @param var_name: name of this variable
         @type var_name: string
         @return: variable with this name
-        @rtype: :py:class:`pycdf.Var`
+        @rtype: `pycdf.Var`
         @raise CDFError: if CDF library reports an error
         @raise CDFWarning: if CDF library reports a warning and interpreter
                            is set to error on warnings.
@@ -3486,7 +3493,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         """Returns a string representation of the variable
 
         This is an 'informal' representation in that it cannot be evaluated
-        directly to create a :py:class:`pycdf.Var`.
+        directly to create a `pycdf.Var`.
 
         @return: info on this zVar, CDFTYPE [dimensions] NRV
                  (if not record-varying)
@@ -3575,7 +3582,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         ================
         sparsetype : ctypes.c_long
             If specified, should be a sparse record mode from
-            :mod:`~spacepy.pycdf.const`; see also CDF C reference manual
+            `~spacepy.pycdf.const`; see also CDF C reference manual
             section 4.11.1. If not specified, the sparse record mode for this
             variable will not change.
 
@@ -3685,8 +3692,8 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         interface. Checks the return value with L{Library.check_status}.
 
         @param args: Passed directly to the CDF library interface. Useful
-                     constants are defined in the :py:mod:`pycdf.const` module of this package.
-        @type args: various, see :py:mod:`ctypes`.
+                     constants are defined in the `pycdf.const` module of this package.
+        @type args: various, see `ctypes`.
         @return: CDF status from the library
         @rtype: ctypes.c_long
         @note: Terminal NULL_ is automatically added to L{args}.
@@ -3729,7 +3736,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         Parameters
         ==========
         new_type : ctypes.c_long
-            the new type from :mod:`~spacepy.pycdf.const`
+            the new type from `~spacepy.pycdf.const`
 
         Returns
         =======
@@ -3794,11 +3801,11 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
         comptype : ctypes.c_long
             type of compression to change to, see CDF C reference
             manual section 4.10. Constants for this parameter
-            are in :mod:`~spacepy.pycdf.const`. If not specified, will not
+            are in `~spacepy.pycdf.const`. If not specified, will not
             change compression.
         param : ctypes.c_long
             Compression parameter, see CDF CRM 4.10 and
-            :mod:`~spacepy.pycdf.const`.
+            `~spacepy.pycdf.const`.
             If not specified, will choose reasonable default (5 for
             gzip; other types have only one possible parameter.)
 
@@ -3815,7 +3822,7 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
 
         Returns
         =======
-        out : :class:`VarCopy`
+        out : `VarCopy`
             list of all data in record order
         """
         return VarCopy(self)
@@ -3905,19 +3912,19 @@ class Var(MutableSequence, spacepy.datamodel.MetaMixin):
     attrs = property(
         _get_attrs, _set_attrs, None,
         """zAttributes for this zVariable in a dict-like format.
-        See :class:`zAttrList` for details.
+        See `zAttrList` for details.
         """)
 
 
 class VarCopy(spacepy.datamodel.dmarray):
-    """A list-like copy of the data and attributes in a :class:`Var`
+    """A list-like copy of the data and attributes in a `Var`
 
     Data are in the list elements. CDF attributes are in a dict,
     accessed through :attr:`attrs`. (I.e.,
-    data and attributes are accessed like in a :class:`Var`.)
+    data and attributes are accessed like in a `Var`.)
 
     Do not instantiate this class directly; use :meth:`~Var.copy`
-    on an existing :class:`Var`.
+    on an existing `Var`.
 
     Several methods provide access to details about how the original
     variable was constructed. This is mostly for making it easier to
@@ -3958,7 +3965,7 @@ class VarCopy(spacepy.datamodel.dmarray):
         """Copies all data and attributes from a zVariable
 
         @param zVar: variable to take data from
-        @type zVar: :py:class:`pycdf.Var`
+        @type zVar: `pycdf.Var`
         """
         obj = super(VarCopy, cls).__new__(cls, zVar[...], zVar.attrs.copy())
         obj._cdf_meta = { k: getattr(zVar, k)() for k in (
@@ -4130,7 +4137,7 @@ class _Hyperslice(object):
     @ivar column: is this slice in column-major mode (if false, row-major)
     @type column: boolean
     @ivar zvar: what CDF variable this object slices on
-    @type zvar: :py:class:`pycdf.Var`
+    @type zvar: `pycdf.Var`
     @ivar expanded_key: fully-expanded version of the key passed to the
                         constructor (all dimensions filled in)
     @type expanded_key: tuple
@@ -4142,7 +4149,7 @@ class _Hyperslice(object):
         """Create a Hyperslice
 
         @param zvar: zVariable that this slices
-        @type zvar: :py:class:`pycdf.Var`
+        @type zvar: `pycdf.Var`
         @param key: Python multi-dimensional slice as passed to
                     __getitem__
         @type key: tuple of slice and/or int
@@ -4415,7 +4422,7 @@ class _Hyperslice(object):
 
         Returns
         -------
-        :class:`~numpy.ndarray`
+        `~numpy.ndarray`
             The input data as a well-formed array; may be the input
             data exactly.
         """
@@ -4513,15 +4520,13 @@ class _Hyperslice(object):
             if backward:
                 del types[types.index(const.CDF_EPOCH16)]
                 del types[0]
-            elif not lib.supports_int8:
-                del types[0]
         elif d is data or isinstance(data, numpy.generic):
             #numpy array came in, use its type (or byte-swapped)
             types = [k for k in lib.numpytypedict
                      if (lib.numpytypedict[k] == d.dtype
                          or lib.numpytypedict[k] == d.dtype.newbyteorder())
                      and not k in lib.timetypes]
-            if (not lib.supports_int8 or backward) \
+            if backward \
                and const.CDF_INT8.value in types:
                 del types[types.index(const.CDF_INT8.value)]
             #Maintain priority to match the ordered lists below:
@@ -4573,8 +4578,7 @@ class _Hyperslice(object):
                                1.7e38, 1.7e38, 8e307, 8e307]
                 types = [t for (t, c) in zip(types, cutoffs) if c > maxval
                          and (minval >= 0 or minval >= -c)]
-                if (not lib.supports_int8 or backward) \
-                       and const.CDF_INT8 in types:
+                if backward and const.CDF_INT8 in types:
                     del types[types.index(const.CDF_INT8)]
             else: #float
                 if dims == ():
@@ -4678,7 +4682,7 @@ class Attr(MutableSequence):
 
     .. warning::
         This class should not be used directly, but only in its
-        subclasses, :class:`gAttr` and :class:`zAttr`. The methods
+        subclasses, `gAttr` and `zAttr`. The methods
         listed here are safe to use in the subclasses.
 
     Represents a CDF attribute, providing access to the Entries in a format
@@ -4726,7 +4730,7 @@ class Attr(MutableSequence):
         """Initialize this attribute
 
         @param cdf_file: CDF file containing this attribute
-        @type cdf_file: :py:class:`pycdf.CDF`
+        @type cdf_file: `pycdf.CDF`
         @param attr_name: Name of this attribute
         @type attr_name: str
         @param create: True to create attribute, False to look up existing.
@@ -5048,7 +5052,7 @@ class Attr(MutableSequence):
         """Select this CDF and Attr and call the CDF internal interface
 
         @param args: Passed directly to the CDF library interface.
-        @type args: various, see :py:mod:`ctypes`.
+        @type args: various, see `ctypes`.
         @return: CDF status from the library
         @rtype: ctypes.c_long
         @note: Terminal NULL_ is automatically added to L{args}.
@@ -5088,13 +5092,13 @@ class Attr(MutableSequence):
         Other Parameters
         ================
         new_type
-            type to change this Entry to, from :mod:`~spacepy.pycdf.const`.
+            type to change this Entry to, from `~spacepy.pycdf.const`.
             Omit to only check type.
 
         Returns
         =======
         out : int
-            CDF variable type, see :mod:`~spacepy.pycdf.const`
+            CDF variable type, see `~spacepy.pycdf.const`
 
         Notes
         =====
@@ -5162,7 +5166,7 @@ class Attr(MutableSequence):
         Other Parameters
         ================
         type : int
-            type of the new Entry, from :mod:`~spacepy.pycdf.const`
+            type of the new Entry, from `~spacepy.pycdf.const`
             (otherwise guessed from ``data``)
         number : int
             Entry number to write, default is lowest available number.
@@ -5288,7 +5292,7 @@ class Attr(MutableSequence):
         @param number: number of Entry to write
         @type number: int
         @param data: data to write
-        @param cdf_type: the CDF type to write, from :py:mod:`pycdf.const`
+        @param cdf_type: the CDF type to write, from `pycdf.const`
         @param dims: dimensions of L{data}
         @type dims: list
         @param elements: number of elements in L{data}, 1 unless it is a string
@@ -5360,7 +5364,7 @@ class zAttr(Attr):
     .. warning::
         Because zAttributes are shared across all variables in a CDF,
         directly manipulating them may have unexpected consequences.
-        It is safest to operate on zEntries via :class:`zAttrList`.
+        It is safest to operate on zEntries via `zAttrList`.
 
     .. note::
         When accessing a zAttr, pyCDF exposes only the zEntry corresponding
@@ -5368,7 +5372,7 @@ class zAttr(Attr):
 
     See Also
     ========
-    :class:`Attr`
+    Attr
     """
     ENTRY_ = const.zENTRY_
     ENTRY_DATA_ = const.zENTRY_DATA_
@@ -5415,7 +5419,7 @@ class gAttr(Attr):
     `2 <http://docs.python.org/tutorial/datastructures.html#more-on-lists>`_,
     `3 <http://docs.python.org/library/stdtypes.html#typesseq>`_.
 
-    Normally accessed by providing a key to a :class:`gAttrList`:
+    Normally accessed by providing a key to a `gAttrList`:
 
         >>> attribute = cdffile.attrs['attribute_name']
         >>> first_gentry = attribute[0]
@@ -5470,7 +5474,7 @@ class gAttr(Attr):
 
     See Also
     ========
-    :class:`Attr`
+    Attr
     """
     ENTRY_ = const.gENTRY_
     ENTRY_DATA_ = const.gENTRY_DATA_
@@ -5488,7 +5492,7 @@ class AttrList(MutableMapping):
 
     .. warning::
         This class should not be used directly, but only via its
-        subclasses, :class:`gAttrList` and :class:`zAttrList`.
+        subclasses, `gAttrList` and `zAttrList`.
         Methods listed here are safe to use from the subclasses.
 
     .. autosummary::
@@ -5508,7 +5512,7 @@ class AttrList(MutableMapping):
         """Initialize the attribute collection
 
         @param cdf_file: CDF these attributes are in
-        @type cdf_file: :py:class:`pycdf.CDF`
+        @type cdf_file: `pycdf.CDF`
         @param special_entry: callable which returns a "special" entry number,
         used to limit results for zAttrs to those which match the zVar
         (i.e. the var number)
@@ -5694,7 +5698,7 @@ class AttrList(MutableMapping):
         data
             data to put into the first entry in the new Attribute
         type
-            CDF type of the first entry from :mod:`~spacepy.pycdf.const`.
+            CDF type of the first entry from `~spacepy.pycdf.const`.
             Only used if data are specified.
 
         Raises
@@ -5780,19 +5784,19 @@ class gAttrList(AttrList):
     """
     Object representing *all* the gAttributes in a CDF.
 
-    Normally accessed as an attribute of an open :class:`CDF`:
+    Normally accessed as an attribute of an open `CDF`:
 
         >>> global_attribs = cdffile.attrs
 
     Appears as a dictionary: keys are attribute names; each value is an
-    attribute represented by a :class:`gAttr` object. To access the global
+    attribute represented by a `gAttr` object. To access the global
     attribute TEXT:
 
         >>> text_attr = cdffile.attrs['TEXT']
 
     See Also
     ========
-    :class:`AttrList`
+    AttrList
     """
     AttrType = gAttr
     attr_name = 'gAttribute'
@@ -5816,7 +5820,7 @@ class gAttrList(AttrList):
 class zAttrList(AttrList):
     """Object representing *all* the zAttributes in a zVariable.
 
-    Normally accessed as an attribute of a :class:`Var` in an open
+    Normally accessed as an attribute of a `Var` in an open
     CDF:
         
         >>> epoch_attribs = cdffile['Epoch'].attrs
@@ -5851,11 +5855,11 @@ class zAttrList(AttrList):
         #. existing zEntry corresponding to this zVar
         #. other zEntries in this zAttribute
         #. the type of this zVar
-        #. data-matching constraints described in :py:meth:`CDF.new`
+        #. data-matching constraints described in :meth:`CDF.new`
 
     See Also
     ========
-    :class:`AttrList`
+    AttrList
 
     """
     AttrType = zAttr
@@ -5866,7 +5870,7 @@ class zAttrList(AttrList):
         """Initialize the attribute collection
 
         @param zvar: zVariable these attributes are in
-        @param zvar: :py:class:`pycdf.Var`
+        @param zvar: `pycdf.Var`
         """
         super(zAttrList, self).__init__(zvar.cdf_file, zvar._num)
         self._zvar = zvar
@@ -5961,9 +5965,9 @@ class zAttrList(AttrList):
 
         @param name: name of the zAttr to check or change
         @type name: str
-        @param new_type: type to change it to, see :py:mod:`pycdf.const`
+        @param new_type: type to change it to, see `pycdf.const`
         @type new_type: ctypes.c_long
-        @return: CDF variable type, see :py:mod:`pycdf.const`
+        @return: CDF variable type, see `pycdf.const`
         @rtype: int
         @note: If changing types, old and new must be equivalent, see CDF
                User's Guide section 2.5.5 pg. 57

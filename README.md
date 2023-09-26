@@ -1,5 +1,5 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3252523.svg)](https://doi.org/10.5281/zenodo.3252523)
-[![Build Status](https://github.com/spacepy/spacepy/workflows/CI/badge.svg?branch=master)](https://github.com/spacepy/spacepy/actions?query=workflow%3ACI)
+[![Build Status](https://github.com/spacepy/spacepy/workflows/CI/badge.svg?branch=main)](https://github.com/spacepy/spacepy/actions?query=workflow%3ACI)
 
 # SpacePy
 
@@ -15,7 +15,7 @@ SpacePy is a package for Python, targeted at the space sciences, that aims to ma
 
 The SpacePy project seeks to promote accurate and open research standards by providing an open environment for code development. In the space physics community there has long been a significant reliance on proprietary languages that restrict free transfer of data and reproducibility of results. By providing a comprehensive, open-source library of widely-used analysis and visualization tools in a free, modern and intuitive language, we hope that this reliance will be diminished.
 
-To help foster an open and welcoming environment, we have adopted a [code of conduct](https://github.com/spacepy/spacepy/blob/master/code-of-conduct.md) that we encourage members of the SpacePy community to read and follow.
+To help foster an open and welcoming environment, we have adopted a [code of conduct](https://github.com/spacepy/spacepy/blob/main/code-of-conduct.md) that we encourage members of the SpacePy community to read and follow.
 
 ## Getting SpacePy
 
@@ -36,15 +36,16 @@ python setup.py install --user
 Further installation documentation can be found [here](https://spacepy.github.io/install.html) Mac-specific information can be found [here](https://spacepy.github.io/install_mac.html)
 Full documentation is at [https://spacepy.github.io](https://spacepy.github.io)
 
-SpacePy supports both Python 2.7 and 3.x.
+SpacePy supports Python 3.6 and later.
 
 ### Dependencies
 
 SpacePy has a number of well-maintained dependencies, most of which are automatically installed by ```pip```. These include:
- - numpy (>=1.10, !=1.15.0)
- - scipy (>=0.11)
- - matplotlib (>=1.5)
- - h5py
+ - numpy (>=1.15.1)
+ - dateutil (>=2.1)
+ - scipy (>=1.0)
+ - matplotlib (>=3.1)
+ - h5py (>=2.10)
 
 Soft dependencies (that are required only for a very limited part of SpacePy's functionality) are:
  - NASA CDF
@@ -75,4 +76,4 @@ Certain modules may provide additional citations in the ```__citation__``` attri
 For acknowledging SpacePy, please provide the URL to our github repository. [github.com/spacepy/spacepy](https://github.com/spacepy/spacepy)
 
 ## Changes
-Changes in the released version of SpacePy are provided in the [release notes](https://spacepy.github.io/release_notes.html). For changes since the latest release, see the [repository version](https://github.com/spacepy/spacepy/blob/master/Doc/source/release_notes.rst).
+Changes in the released version of SpacePy are provided in the [release notes](https://spacepy.github.io/release_notes.html). For changes since the latest release, see the [repository version](https://github.com/spacepy/spacepy/blob/main/Doc/source/release_notes.rst).

@@ -56,7 +56,7 @@ validate the analysis and receive appropriate credit for his or her
 work.
 
 
-.. module:: spacepy
+.. currentmodule:: spacepy
 
 Getting Started
 ===============
@@ -82,7 +82,6 @@ Further reference material on how to use SpacePy, and examples.
     release_notes
     case_studies
     publications
-    py2k_eol
     configuration
     scripts
 

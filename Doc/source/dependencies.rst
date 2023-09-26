@@ -15,21 +15,22 @@ here. :doc:`dep_versions` describes future support.
 
 Hard Dependencies
 =================
-Without these packages installed, SpacePy will not function.
+Without these packages installed, SpacePy will not
+function. Installing via ``pip`` will normally install Python-based
+dependencies automatically.
 
-Python 2.7+
+Python 3.6+
 -----------
 
 `Python <http://www.python.org/>`_ is the core language for SpacePy.
-Python 3 is strongly recommended and will be required soon. See :doc:`py2k_eol`.
 
 Required to install SpacePy.
 
-NumPy 1.10+
------------
+NumPy 1.15.1+
+-------------
 `NumPy <http://numpy.scipy.org/>`_ provides the
 high-performance array data structure used throughout SpacePy. Version
-1.10 or later is required.
+1.15.1 or later is required.
 
 Required to install SpacePy. f2py is part of NumPy, but is sometimes
 packaged separately; it is required (at installation time) if
@@ -41,14 +42,22 @@ On Python 3.9, numpy 1.18 or later is required.
 
 dateutil
 --------
-If you choose not to install :ref:`matplotlib <dependencies_mpl>`,
-`dateutil <http://labix.org/python-dateutil>`_ 1.4 or later is required.
-(Installing matplotlib will fulfill this dependency.)
+`dateutil <https://dateutil.readthedocs.io/>`_ 2.1 or later is required.
 
 C compiler
 ----------
 If you are installing SpacePy from source, a working C compiler
 is required. (Not necessary for the Windows binary installer.)
+
+pip
+---
+`pip <https://pip.pypa.io/>`_ is now the expected installer for Python
+packages. Almost any modern Python installation will include it.
+
+setuptools
+----------
+`setuptools <https://setuptools.pypa.io>`_ is the installer backend. It
+is commonly included and, if necessary, installable with ``pip``.
 
 Soft Dependencies
 =================
@@ -61,8 +70,8 @@ methods such as pip.
 
 .. _dependencies_scipy:
 
-SciPy 0.11+
------------
+SciPy 1.0+
+----------
 `SciPy <http://www.scipy.org/>`_ provides several useful scientific
 and numerical functions build on top of NumPy.  It is highly
 recommended. The following modules may have limited functionality
@@ -77,8 +86,8 @@ without SciPy:
 
 .. _dependencies_mpl:
 
-matplotlib 1.5.0+
------------------
+matplotlib 3.1+
+---------------
 `matplotlib <http://matplotlib.sourceforge.net/>`_ is the preferred
 plotting package for Python. It is highly recommended. Without it, you
 will not be able to effectively visualize data, and the following
@@ -93,15 +102,15 @@ modules may have limited functionality or fail entirely:
 
 .. _dependencies_h5py:
 
-h5py 2.6+
----------
+h5py 2.10+
+----------
 `h5py <http://code.google.com/p/h5py/>`_ provides a Python interface to
 HDF5 files. It is required for the HDF import/export capability of
 :mod:`~spacepy.datamodel` and for use of the :mod:`~spacepy.omni` module.
 
 .. _dependencies_cdf:
 
-CDF 2.7+
+CDF 3.5+
 --------
 NASA's `CDF <http://cdf.gsfc.nasa.gov/>`_ library provides access to
 Common Data Format files. It is required for :mod:`~spacepy.pycdf`,
@@ -119,8 +128,7 @@ Fortran compiler
 ----------------
 If installing from source, :mod:`~spacepy.irbempy` requires a Fortran
 compiler. (This is not required for the Windows binary installer).
-Supported compilers are the GNU compiler ``gfortran``, the older GNU
-compiler ``g77``, and the Portland Group PGI compiler.
+The Supported compiler is the GNU compiler ``gfortran``.
 
 If :mod:`~spacepy.irbempy` is to be used, the Fortran compiler (and
 f2py) must be installed before SpacePy.

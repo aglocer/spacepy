@@ -614,17 +614,15 @@ class VariablesTests(ISTPTestsBase):
             0, len(spacepy.pycdf.istp.VariableChecks.fieldnam(v)))
 
 
-@unittest.skipIf(spacepy.pycdf.lib.version[0] < 3,
-                 'Requires CDF library 3 or newer')
 class VariablesTestsNew(ISTPTestsBase):
     """Tests of variable-checking functions that require CDF 3"""
     longMessage = True
 
     def setUp(self):
         """Disable backward-compat before making test CDF"""
-        spacepy.pycdf.lib.set_backward(False)
+        oldback = spacepy.pycdf.lib.set_backward(False)
         super(VariablesTestsNew, self).setUp()
-        spacepy.pycdf.lib.set_backward(True)
+        spacepy.pycdf.lib.set_backward(oldback)
 
     def testFillvalEpoch16(self):
         """Test for fillval being okay with epoch16"""
@@ -635,8 +633,6 @@ class VariablesTestsNew(ISTPTestsBase):
         errs = spacepy.pycdf.istp.VariableChecks.fillval(v)
         self.assertEqual(0, len(errs), '\n'.join(errs))
 
-    @unittest.skipIf(not spacepy.pycdf.lib.supports_int8,
-                     'Requires TT2000 support in CDF library')
     def testFillvalTT2000(self):
         """Test for fillval being okay with TT2000"""
         v = self.cdf.new('Epoch', type=spacepy.pycdf.const.CDF_TIME_TT2000)
@@ -832,11 +828,11 @@ class VarBundleChecksBase(unittest.TestCase):
     def setUp(self):
         """Setup: make an empty, open, writeable CDF"""
         self.tempdir = tempfile.mkdtemp()
-        spacepy.pycdf.lib.set_backward(False)
+        oldback = spacepy.pycdf.lib.set_backward(False)
         self.outcdf = spacepy.pycdf.CDF(os.path.join(
             self.tempdir, 'source_descriptor_datatype_19990101_v00.cdf'),
                                      create=True)
-        spacepy.pycdf.lib.set_backward(True)
+        spacepy.pycdf.lib.set_backward(oldback)
         self.incdf = spacepy.pycdf.CDF(os.path.join(
             spacepy_testing.testsdir, self.testfile))
         # Same in this instance, some tests may distinguish

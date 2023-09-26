@@ -9,6 +9,7 @@ import os.path
 import re
 import sys
 import sysconfig
+import unittest
 import warnings
 
 
@@ -27,8 +28,13 @@ def add_build_to_path():
     module search path, so the unit tests can be run against the built
     instead of installed version.
 
-    This is run on import of this module.
+    .. deprecated:: 0.5.0
+        The new pip-based installation method does not support a separate
+        "build" step, so this function is no longer useful. When developing,
+        either install to a custom location and manually set the path, or
+        use an editable install.
     """
+    warnings.warn('add_build_to_path deprecated in 0.5.0', DeprecationWarning)
     # Prioritize version-specific path; py2 tends to be version-specific
     # and py3 tends to use just "lib". But only use first-matching.
     for pth in ('lib',  # Prepending, so add low-priority paths first.
@@ -75,17 +81,12 @@ class assertWarns(warnings.catch_warnings):
         The test case from which this is being called, almost always
         ``self`` (so the :meth:`~unittest.TestCase.fail` method is available).
 
-    action : {'always', ``None``, 'default', 'error', 'ignore', 'module',
-              'once'}
+    action : {'always', ``None``, 'default', 'error', 'ignore', 'module', 'once'}
         Unless ``None``, a warning filter matching the specified warning will
         be added to the filter before executing the block. 'always'
         (default) is generally recommended to make sure the tested
-        warning will be raised. If 'always' is specified, on Python 2 the log
-        of previously-issued warnings will be edited to work around a
-        `Python bug <https://stackoverflow.com/questions/56821539/>`_. In this
-        case using ``module`` is strongly recommended to minimize the impact
-        of this editing. This filter will be removed on completion of the
-        block.
+        warning will be raised. This filter will be removed on completion
+        of the block.
 
     message : str, optional
         Regular expression to match the start of warning message. Default
@@ -134,21 +135,6 @@ class assertWarns(warnings.catch_warnings):
         """Log of warnings issued within context block."""
         if self._filterspec[0] is not None:
             warnings.filterwarnings(*self._filterspec)
-        if self._filterspec[0] == 'always' and sys.version_info[0:2] == (2, 7):
-            # Bug in 2.7: 'always' doesn't work if warning was previously
-            # issued, so remove any record of it being issued, which
-            # is stored by module.
-            msg_pat = re.compile(self._filterspec[1], re.I)
-            cat = self._filterspec[2]
-            mod_pat = re.compile(self._filterspec[3])
-            for m in list(sys.modules):
-                if mod_pat.match(m)\
-                   and hasattr(sys.modules[m], '__warningregistry__'):
-                    reg = sys.modules[m].__warningregistry__
-                    for k in list(reg.keys()):
-                        if msg_pat.match(k[0]) and issubclass(k[1], cat):
-                            del reg[k]
-                            break
 
     def __exit__(self, *exc_info):
         """Exit context manager, called at exit of block"""
@@ -200,4 +186,24 @@ class assertDoesntWarn(assertWarns):
     pass
 
 
-add_build_to_path()
+class TestPlot(unittest.TestCase):
+    """Support for unit tests of plot functionality"""
+    save_plots = False
+    """Save current figure at end of test, can be set by subclass or instance"""
+
+    def setUp(self):
+        super().setUp()
+        import matplotlib
+        import matplotlib.pyplot
+        self.old_backend = matplotlib.get_backend()
+        matplotlib.use('agg')
+
+    def tearDown(self):
+        super().tearDown()
+        import matplotlib
+        import matplotlib.pyplot
+        if self.save_plots and matplotlib.pyplot.get_fignums():
+            fname = 'output_{}.png'.format('_'.join(self.id().split('.')[1:]))
+            matplotlib.pyplot.savefig(fname)
+            matplotlib.pyplot.close()
+        matplotlib.use(self.old_backend)
