@@ -148,8 +148,12 @@ class Line(PbData):
                 for j, l in enumerate(lines[i*(nAlts+5)+5:(i+1)*(nAlts+5)]):
                     parts=l.split()
                     for k,v in enumerate(var):
-                        self[v][i,j]=float(parts[k+1])
-
+                        try:
+                            self[v][i,j]=float(parts[k+1])
+                        except ValueError:
+                            print('pwom.py failed to convert '+parts[k+1]
+                                  +' to float, using 0 instead')
+                            self[v][i,j]=0.0
                 #txt=' '.join(lines[i*(nAlts+5)+5:(i+1)*(nAlts+5)]).split()
                 #dat= np.array(txt,dtype=np.float32).reshape([nAlts,len(var)+1])
                 #    
