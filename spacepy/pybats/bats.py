@@ -207,7 +207,7 @@ class BatsLog(LogFile):
         Create a quick-look plot of Dst (if variable present in file)
         and compare against observations.
 
-        Like all *add_\* * methods in Pybats, the *target* kwarg determines
+        Like all *add_\\* * methods in Pybats, the *target* kwarg determines
         where to place the plot.
         If kwarg *target* is **None** (default), a new figure is
         generated from scratch.  If *target* is a matplotlib Figure
@@ -900,7 +900,7 @@ class Bats2d(IdlFile):
     def calc_uperp(self):
         '''
         Calculate the magnitude of the velocity perpendicular to the
-        magnetic field: $\vec{U} \times \hat{b}$.  Result maintains units
+        magnetic field: $\\vec{U} \\times \\hat{b}$.  Result maintains units
         of velocity.
 
         Values are calculated for each fluid and stored as self['u_perp']
@@ -934,7 +934,7 @@ class Bats2d(IdlFile):
     @calc_wrapper
     def calc_upar(self):
         '''
-        Calculate $\vec{U} \cdot \vec{B}$ and store as 'upar' in *self*.
+        Calculate $\\vec{U} \\cdot \\vec{B}$ and store as 'upar' in *self*.
         Result maintains units of velocity.  Values are calculated for each
         fluid.
 
@@ -1092,7 +1092,7 @@ class Bats2d(IdlFile):
     def _calc_divmomen(self):
         '''
         Calculate the divergence of momentum, i.e.
-        $\rho(u \dot \nabla)u$.
+        $\\rho(u \\dot \\nabla)u$.
         This is currently exploratory.
         '''
 
@@ -1800,7 +1800,7 @@ class Bats2d(IdlFile):
         for both day- and night-sides.  This is done using a bisection
         approach to precisely locate the transition between open and closed
         geometries.  The method stops once this transition is found within
-        a latitudinal tolerance of *tol*, which defaults to $\pi/360.$, or
+        a latitudinal tolerance of *tol*, which defaults to $\\pi/360.$, or
         one-half degree.  The tracing *method* can be set via keyword and
         defaults to 'rk4' (4th order Runge Kutta, see
         :class:`~spacepy.pybats.bats.Stream` for more information).
@@ -2157,196 +2157,6 @@ class Bats2d(IdlFile):
             # Set new axes limits:
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
-
-        return fig, ax, collect
-
-    def add_b_magsphere_new(self, *args, **kwargs):
-        '''
-        This method is included to ease the transistion from the legacy
-        version of *add_b_magsphere* to *add_b_magsphere_new*, whose suffix
-        has been dropped now that it is the standard method.
-        '''
-
-        import warnings
-
-        print('ATTENTION: add_b_magsphere_new is now simply add_b_magsphere')
-        warnings.warn('add_b_magsphere_new is a candidate for removal',
-                      category=DeprecationWarning)
-        return self.add_b_magsphere(*args, **kwargs)
-
-    def add_b_magsphere_legacy(self, target=None, loc=111, style='mag',
-                               DoImf=False, DoOpen=False, DoTail=False,
-                               DoDay=True, method='rk4', **kwargs):
-        '''
-        This object method is considered LEGACY and is a candidate for
-        removal.  An updated algorithm using the same name (add_b_magsphere)
-        is the replacement.
-
-        Create an array of field lines closed to the central body in the
-        domain.  Add these lines to Matplotlib target object *target*.
-        If no *target* is specified, a new figure and axis are created.
-
-        A tuple containing the figure, axes, and LineCollection object
-        is returned.  Any additional kwargs are handed to the LineCollection
-        object.
-
-        Note that this should currently only be used for GSM y=0 cuts
-        of the magnetosphere.
-
-        Method:
-        First, the title angle is approximated by tracing a dipole-like
-        field line and finding the point of maximum radial distance on
-        that line.  This is used as the magnetic equator.  From this
-        equator, many lines are traced starting at the central body
-        radius.  More lines are grouped together at higher magnetic
-        latitude to give good coverage at larger L-shells.  Once an
-        open field line is detected, no more lines are traced.  This
-        is done on the day and night side of the central body.
-
-        Because this method rarely captures the position of the night
-        side x-line, more field lines are traced by marching radially
-        outwards away from the furthest point from the last traced and
-        closed field line.  This is repeated until open lines are found.
-        '''
-
-        from matplotlib.collections import LineCollection
-
-        # Set ax and fig based on given target.
-        fig, ax = set_target(target, figsize=(10, 10), loc=loc)
-
-        lines = []
-        colors = []
-
-        # Approximate the dipole tilt of the central body.
-        stream = self.get_stream(3.0, 0, 'bx', 'bz', method=method)
-        r = stream.x**2 + stream.y**2
-        loc, = np.where(r == r.max())
-        tilt = np.arctan(stream.y[loc[0]]/stream.x[loc[0]])
-
-        # Initial values:
-        daymax = tilt + np.pi/2.0
-        nightmax = tilt + 3.0*np.pi/2.0
-
-        # Day side:
-        n = np.arange(25)+1.0
-        angle = tilt + 5.0*np.pi*np.log(n)/(12.0*np.log(n[-1]))
-        for theta in angle:
-            x = self.attrs['rbody'] * np.cos(theta)
-            y = self.attrs['rbody'] * np.sin(theta)
-            stream = self.get_stream(x, y, 'bx', 'bz',
-                                     style=style, method=method)
-            if (stream.y[0] > self.attrs['rbody']) or (stream.style[0] == 'k'):
-                daymax = theta
-                break
-            savestream = stream
-            if DoDay:
-                lines.append(np.array([stream.x, stream.y]).transpose())
-                colors.append(stream.style[0])
-
-        # Add IMF field lines.
-        if DoImf:
-            stream = savestream
-            r = np.sqrt(stream.x**2 + stream.y**2)
-            loc, = np.where(r == r.max())
-            x_mp = stream.x[loc[0]]+0.15
-            y_mp = stream.y[loc[0]]
-            delx = 2.0
-            for i, x in enumerate(np.arange(x_mp, 15.0, delx)):
-                # From dayside x-line out and up:
-                y = y_mp - x_mp+x
-                stream = self.get_stream(x, y, 'bx', 'bz', style=style,
-                                         method=method)
-                lines.append(np.array([stream.x, stream.y]).transpose())
-                colors.append(stream.style[0])
-
-                # From top of magnetosphere down:
-                y = x_mp + 15.0-x+delx/3.0
-                stream = self.get_stream(x-delx/3.0, y, 'bx', 'bz',
-                                         method=method, style=style)
-                lines.append(np.array([stream.x, stream.y]).transpose())
-                colors.append(stream.style[0])
-
-                # From bottom of mag'sphere down:
-                y = x_mp - 10.0 - x + 2.0*delx/3.0
-                stream = self.get_stream(x-2.0*delx/3.0, y, 'bx',
-                                         'bz', style=style, method=method)
-                lines.append(np.array([stream.x, stream.y]).transpose())
-                colors.append(stream.style[0])
-
-        # Night side:
-        angle = np.pi + tilt + np.pi*np.log(n)/(2.5*np.log(n[-1]))
-        for theta in angle:
-            x = self.attrs['rbody'] * np.cos(theta)
-            y = self.attrs['rbody'] * np.sin(theta)
-            stream = self.get_stream(x, y, 'bx', 'bz',
-                                     style=style, method=method)
-            if stream.open:
-                nightmax = theta
-                break
-            savestream = stream
-            lines.append(np.array([stream.x, stream.y]).transpose())
-            colors.append(stream.style[0])
-
-        # March down tail.
-        stream = savestream
-        r = np.sqrt(stream.x**2 + stream.y**2)
-        loc, = np.where(r == r.max())
-        x1 = stream.x[loc[0]]
-        y1 = stream.y[loc[0]]
-        x = x1
-        y = y1
-        while (x-1.5) > self['x'].min():
-            stream = self.get_stream(x-1.5, y, 'bx', 'bz', style=style,
-                                     method=method)
-            r = np.sqrt(stream.x**2 + stream.y**2)
-            if stream.open:
-                break
-            lines.append(np.array([stream.x, stream.y]).transpose())
-            colors.append(stream.style[0])
-            loc, = np.where(r == r.max())
-            x = stream.x[loc[0]]
-            y = stream.y[loc[0]]
-
-        if x1 == x:
-            stream = self.get_stream(x1+1.0, y1, 'bx', 'bz', method=method)
-            r = np.sqrt(stream.x**2 + stream.y**2)
-            loc, = np.where(r == r.max())
-            x1 = stream.x[loc[0]]
-            y1 = stream.y[loc[0]]
-
-        # Add more along neutral sheet.
-        if DoTail:
-            m = (y-y1)/(x-x1)
-            xmore = np.arange(x, -100, -3.0)
-            ymore = m*(xmore-x)+y
-            for x, y in zip(xmore[1:], ymore[1:]):
-                stream = self.get_stream(x, y, 'bx', 'bz', style=style,
-                                         method=method)
-                lines.append(np.array([stream.x, stream.y]).transpose())
-                colors.append(stream.style[0])
-
-        # Add open field lines.
-        if DoOpen:
-            for theta in np.linspace(daymax,
-                                     0.99*(2.0*(np.pi+tilt))-nightmax, 15):
-                x = self.attrs['rbody'] * np.cos(theta)
-                y = self.attrs['rbody'] * np.sin(theta)
-                stream = self.get_stream(x, y, 'bx', 'bz', method=method)
-                if stream.open:
-                    lines.append(np.array([stream.x, stream.y]).transpose())
-                    colors.append(stream.style[0])
-                x = self.attrs['rbody'] * np.cos(theta+np.pi)
-                y = self.attrs['rbody'] * np.sin(theta+np.pi)
-                stream = self.get_stream(x, y, 'bx', 'bz', method=method)
-                if stream.open:
-                    lines.append(np.array([stream.x, stream.y]).transpose())
-                    colors.append(stream.style[0])
-
-        if 'colors' in kwargs:
-            colors = kwargs['colors']
-            kwargs.pop('colors')
-        collect = LineCollection(lines, colors=colors, **kwargs)
-        ax.add_collection(collect)
 
         return fig, ax, collect
 
@@ -2975,7 +2785,7 @@ class Mag(PbData):
 
     def _recalc(self):
         '''
-        Calculate total :math:`\Delta B` from GM and IE; store under object
+        Calculate total :math:`\\Delta B` from GM and IE; store under object
         keys *totaln*, *totale*, and *totald* (one for each component of the
         HEZ coordinate system).
 
@@ -3020,7 +2830,7 @@ class Mag(PbData):
         sum of the two horizontal components (north-south and east-west
         components):
 
-        $\Delta B_H = \sqrt{\Delta B_N^2 + \Delta B_E^2}$
+        $\\Delta B_H = \\sqrt{\\Delta B_N^2 + \\Delta B_E^2}$
         '''
 
         allvars = list(self.keys())
@@ -3040,7 +2850,7 @@ class Mag(PbData):
 
         |dB/dt|_h is also calculated following the convention of
         Pulkkinen et al, 2013:
-        $|dB/dt|_H = \sqrt{(\dB_N/dt)^2 + (dB_E/dt)^2}$
+        $|dB/dt|_H = \\sqrt{(\\dB_N/dt)^2 + (dB_E/dt)^2}$
 
         A 2nd-order accurate centeral difference method is used to
         calculate the time derivative.  For the first and last points,
@@ -3104,12 +2914,12 @@ class Mag(PbData):
         newly created line object.  These can be used to further customize
         the figure, axis, and line as necessary.
 
-        Example: Plot total :math:`\Delta B_N` onto an existing axis with line
+        Example: Plot total :math:`\\Delta B_N` onto an existing axis with line
         color blue, line style dashed, and line label "Wow!":
 
         >>> self.plot('dBn', target='ax', label='Wow!', lc='b', ls='--')
 
-        Example: Plot total :math:`\Delta B_N` on a new figure, save returned
+        Example: Plot total :math:`\\Delta B_N` on a new figure, save returned
         values and overplot additional values on the returned axis.  Default
         labels and line styles are used in this example.
 
@@ -3221,14 +3031,14 @@ class MagFile(PbData):
     operations.  :class:`~spacepy.pybats.bats.MagFile` objects open, parse,
     and visualize such output.
 
-    The $\delta B$ calculated by the SWMF requires two components: GM (BATSRUS)
+    The $\\delta B$ calculated by the SWMF requires two components: GM (BATSRUS)
     and IE (Ridley_serial).  The data is spread across two files: GM_mag*.dat
-    and IE_mag*.dat.  The former contains $\delta B$ caused by gap-region
+    and IE_mag*.dat.  The former contains $\\delta B$ caused by gap-region
     (i.e., inside the inner boundary) FACs and the changing global field.
-    The latter contains the $\delta B$ caused by Pederson and Hall
+    The latter contains the $\\delta B$ caused by Pederson and Hall
     currents in the ionosphere.  :class:`~spacepy.pybats.bats.MagFile` objects
     can open one or both of these files at a time; when both are opened, the
-    total $\delta B$ is calculated and made available to the user.
+    total $\\delta B$ is calculated and made available to the user.
 
     Usage:
 
@@ -3391,7 +3201,7 @@ class MagFile(PbData):
         Old magnetometer files had different variable names and did not
         contain the total perturbation.  This function updates variable names
         and sums all contributions from all models/regions to get total
-        :math:`\Delta B`.
+        :math:`\\Delta B`.
 
         This function is only required for legacy results.  New versions of
         the SWMF include both GM, IE, and total perturbations in a single
@@ -3406,7 +3216,7 @@ class MagFile(PbData):
         the perturbations using the pythagorean sum of the two horizontal
         components (north-south and east-west components):
 
-        $\Delta B_H = \sqrt{\Delta B_N^2 + \Delta B_E^2}$
+        $\\Delta B_H = \\sqrt{\\Delta B_N^2 + \\Delta B_E^2}$
         '''
         for k in self:
             if k == 'time' or k == 'iter':
@@ -3420,7 +3230,7 @@ class MagFile(PbData):
 
         |dB/dt|_h is also calculated following the convention of
         Pulkkinen et al, 2013:
-        $|dB/dt|_H = \sqrt{(\dB_N/dt)^2 + (dB_E/dt)^2}$
+        $|dB/dt|_H = \\sqrt{(\\dB_N/dt)^2 + (dB_E/dt)^2}$
         '''
         for k in self:
             if k == 'time' or k == 'iter':
@@ -3733,7 +3543,7 @@ class GeoIndexFile(LogFile):
         if not label:
             label = 'fa$K$e$_{P}$'
             if ('lat' in self.attrs) and ('k9' in self.attrs):
-                label += ' (Lat=%04.1f$^{\circ}$, K9=%03i)' % \
+                label += ' (Lat=%04.1f$^{\\circ}$, K9=%03i)' % \
                     (self.attrs['lat'], self.attrs['k9'])
 
         # Sometimes, the "Kp" varname is caps, sometimes not.
@@ -3905,7 +3715,7 @@ class VirtSat(LogFile):
     def calc_bmag(self):
         '''
         Calculates total magnetic field magnitude via:
-        $|B|=\sqrt{B_X^2+B_Y^2+B_Z^2}$.  Results stored as variable name *b*.
+        $|B|=\\sqrt{B_X^2+B_Y^2+B_Z^2}$.  Results stored as variable name *b*.
         '''
 
         if 'b' not in self:
@@ -3918,7 +3728,7 @@ class VirtSat(LogFile):
     def calc_magincl(self, units='deg'):
         '''
         Magnetic inclination angle (a.k.a. inclination angle) is defined:
-        $\Theta = sin^{-1}(B_Z/B)$.  It is a crucial value when examining
+        $\\Theta = sin^{-1}(B_Z/B)$.  It is a crucial value when examining
         magnetic dynamics about geosychronous orbit, the tail, and other
         locations.
 

@@ -563,11 +563,11 @@ def vampolaPA(omniflux, **kwargs):
         sinfunc_o = partial(sinfunc, order=tmporder+1)
         normfac[idx] = omniflux[idx]/(2*np.pi*integ.quad(sinfunc_o, 0, np.pi)[0])
     #now make the differential number flux
-    dnflux = np.zeros((len(kwargs['alpha']), len(omniflux))).squeeze()
+    dnflux = np.zeros((len(kwargs['alpha']), len(omniflux)))
     for i, a_val in enumerate(np.deg2rad(kwargs['alpha'])):
         dnflux[i] = normfac * sinfunc(a_val)
 
-    return dnflux, kwargs['alpha']
+    return dnflux.squeeze(), kwargs['alpha']
 
 
 def getVampolaOrder(L):
@@ -735,7 +735,7 @@ def getSolarProtonSpectra(norm=3.20e7, gamma=-0.96, E0=15.0, Emin=.1, Emax=600, 
 
     The formulation follows that of:
     Ellison and Ramaty ApJ 298: 400-408, 1985
-    dJ/dE = K^{-\gamma}exp(-E/E0)
+    dJ/dE = K^{-\\gamma}exp(-E/E0)
     
     and the defualt values are the 10/16/2003 SEP event of:
     Mewaldt, R. A., et al. (2005), J. Geophys. Res., 110, A09S18, doi:10.1029/2005JA011038.

@@ -15,12 +15,12 @@ Copyright 2010 Los Alamos National Security, LLC.
 """
 
 import numbers
-try:
-    from collections.abc import Iterable
-except ImportError:
-    from collections import Iterable
+from collections.abc import Iterable
+from collections import OrderedDict
 import os
+import pathlib
 import sys
+import tempfile
 import warnings
 
 import numpy as np
@@ -33,9 +33,33 @@ import spacepy.toolbox as tb
 
 # check whether TS07_DATA_PATH is set, if not then set to spacepy's installed data directory
 if 'TS07_DATA_PATH' not in os.environ:
-    import pkg_resources
-    dataTS07D = os.path.join('data', 'TS07D')
-    spdatapath = pkg_resources.resource_filename('spacepy', dataTS07D)
+    try:
+        import importlib.resources
+        newstyle = hasattr(importlib.resources, 'files')  # < 3.9
+    except ImportError:  # < 3.7
+        newstyle = False
+    if newstyle:
+        spdatapath = importlib.resources.files(spacepy).joinpath(
+            'data', 'TS07D')
+        if isinstance(spdatapath, pathlib.Path) and spdatapath.exists():
+            spdatapath = str(spdatapath)
+        else:
+            # as_file only works on 3.12
+            # https://discuss.python.org/t/importlib-resources-access-whole-directories-as-resources/15618/5
+            td = tempfile.mkdtemp()
+            warnings.warn(
+                f"Writing TS07 data to {td}; will not automatically clean.")
+            td = os.path.join(td, 'TAIL_PAR')
+            os.mkdir(td)
+            files = list(spdatapath.joinpath('TAIL_PAR').iterdir())
+            for f in files:
+                with open(os.path.join(td, f.name), 'wb') as o:
+                    o.write(f.read_bytes())
+            spdatapath = td
+    else:
+        import pkg_resources
+        dataTS07D = os.path.join('data', 'TS07D')
+        spdatapath = pkg_resources.resource_filename('spacepy', dataTS07D)
     os.environ['TS07_DATA_PATH'] = spdatapath  # set environment variable here
 
 
@@ -63,10 +87,7 @@ def updateTS07Coeffs(path=None, force=False, verbose=False, **kwargs):
     import tarfile
     import spacepy.time as spt
     dt = spt.datetime
-    if sys.version_info[0] < 3:
-        import urllib as u
-    else:
-        import urllib.request as u
+    import urllib.request as u
 
     if 'user_agent' in spacepy.config and spacepy.config['user_agent']:
         class AppURLopener(u.FancyURLopener):
@@ -311,11 +332,7 @@ def find_Bmirror(ticks, loci, alpha, extMag='T01STORM', options=[1, 0, 0, 0, 0],
         results['Bmirr'][i] = bmirr
         results['loci'][i] = GEOcoord
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                category=DeprecationWarning,
-                                module=r'spacepy.coordinates$')
-        results['loci'] = spc.Coords(results['loci'], 'GEO', 'car', use_irbem=True)
+    results['loci'] = spc.Coords(results['loci'], 'GEO', 'car', use_irbem=True)
 
     return results
 
@@ -386,11 +403,7 @@ def find_magequator(ticks, loci, extMag='T01STORM', options=[1, 0, 0, 0, 0], omn
         results['Bmin'][i] = bmin
         results['loci'][i] = GEOcoord
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                category=DeprecationWarning,
-                                module=r'spacepy.coordinates$')
-        results['loci'] = spc.Coords(results['loci'], 'GEO', 'car', use_irbem=True)
+    results['loci'] = spc.Coords(results['loci'], 'GEO', 'car', use_irbem=True)
 
     return results
 
@@ -916,11 +929,7 @@ def AlphaOfK(ticks, loci, K, extMag='T01STORM', options=[0, 0, 3, 0, 0], omnival
         pa0 = 90  # start with equatorially mirroring
         # Now get K for initial alpha at this location...
         if np.isfinite(GEOcoord[0]):
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                        category=DeprecationWarning,
-                                        module=r'spacepy.coordinates$')
-                pos1 = spc.Coords(GEOcoord, 'GEO', 'car', use_irbem=True)
+            pos1 = spc.Coords(GEOcoord, 'GEO', 'car', use_irbem=True)
             LS1 = get_Lstar(ticks[i], pos1, pa0, extMag=extMag, options=options, omnivals=omnivals)
             if np.isnan(LS1['Xj']).any():
                 return np.NaN
@@ -1052,11 +1061,7 @@ def find_footpoint(ticks, loci, extMag='T01STORM', options=[1, 0, 3, 0, 0],
         results['Bfootvec'][i] = bfoot
 
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                category=DeprecationWarning,
-                                module=r'spacepy.coordinates$')
-        results['loci'] = spc.Coords(results['loci'], 'GDZ', 'sph', use_irbem=True)
+    results['loci'] = spc.Coords(results['loci'], 'GDZ', 'sph', use_irbem=True)
     results.attrs
     return results
 
@@ -1256,6 +1261,357 @@ def get_AEP8(energy, loci, model='min', fluxtype='diff', particles='e'):
     flux[np.where(np.isclose(flux, d['badval']))] = np.NaN
 
     return flux[0, 0]
+
+
+class Shieldose2:
+    """
+    A class for performing dose calculations using Shieldose2
+
+    Notes
+    -----
+    .. versionadded:: 0.5.0
+
+    Examples
+    --------
+    >>> import spacepy.irbempy
+    >>> import spacepy.toolbox
+    >>> import numpy as np
+    >>> dosemod = spacepy.irbempy.Shieldose2()
+    >>> dosemod.set_shielding(depths=spacepy.toolbox.logspace(0.1, 15, 45), units='mm')
+    >>> e_spec = lambda E: 2*np.exp(-E/0.3)
+    >>> e_grid = spacepy.toolbox.logspace(0.01, 10, 50)
+    >>> dosemod.set_flux(e_spec(e_grid), e_grid, species='e')
+    >>> dosemod.get_dose(detector=10, nucmeth=3)
+    >>> import spacepy.plot
+    >>> spacepy.plot.style('spacepy')
+    >>> dosemod.plot_dose(source=['e'])
+
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.settings = dm.SpaceData()
+        """Settings for the dose calculation (`~spacepy.datamodel.SpaceData`).
+           Updated by `set_flux`, `set_shielding`, and `get_dose`."""
+        self.results = dm.SpaceData()
+        """Results of dose calculation from `get_dose`
+        (`~spacepy.datamodel.SpaceData`).
+
+        Keys are ``dose_proton_untrapped``,  ``dose_proton_trapped``,
+        ``dose_electron``, ``dose_bremsstrahlung``, ``dose_total``,
+        ``depths``, ``fluence_electron``.
+        """
+        self.settings['calc_flag'] = False
+        self.set_shielding()
+
+        def j_def(E, e_or_p='e'):
+            if e_or_p == 'e':
+                j = np.exp(-E/0.1)  # E in MeV
+            else:
+                j = 1e-9*np.exp(-E/20)
+            return j
+
+        en_e_default = tb.logspace(0.04, 10, 30)
+        en_p_default = tb.logspace(0.1, 2000, 299)
+        self.set_flux(j_def(en_e_default, 'e'), en_e_default, 'e')
+        self.set_flux(j_def(en_p_default, 'p'), en_p_default, 'p_tr')
+        self.set_flux(1e-6*j_def(en_p_default, 'p'), en_p_default, 'p_un')
+
+    def __repr__(self):
+        ndepths = len(self.settings['depths'])
+        calc = ' ' if self.settings['calc_flag'] else ' not '
+        settings = f'Depths = {ndepths}; Dose{calc}calculated'
+        return '<Shieldose2({})>'.format(settings)
+
+    def __str__(self):
+        '''
+        Display contents of container.
+        '''
+        kwargs = {'attrs': True, 'verbose': True,
+                  'spaces': '     ', 'print_out': False}
+        typestr = str(type(self)).split("'")[1]
+        settings = "|____settings\n" + self.settings.tree(**kwargs)
+        results = "|____results\n"\
+            + self.results.tree(**kwargs) if self.results else ""
+        return f"""{typestr}\n{settings}{results}"""
+
+    def set_shielding(self, depths=tb.logspace(4, 5000, 30),
+                      units='Mil'):
+        """
+        Parameters
+        ----------
+        depths : array-like
+            Array of layer depths (not thicknesses) in given units.
+            Must be monotonically increasing.
+
+        units : `str`
+            Options are "mil" (thousandths of a inch; default),
+            "g/cm2" (density), or "mm" (millimeters). The shielding
+            is assumed to be aluminium-equivalent.
+        """
+        valid_units = {'mil': 1,
+                       'g/cm2': 2,
+                       'mm': 3}
+        if units.lower() not in valid_units:
+            ulist = ', '.join([un for un in valid_units.keys()])
+            raise ValueError(f'Units must be one of {ulist}, not {units}')
+        usedepth = dm.dmcopy(depths)
+        self.settings['depths'] = dm.dmarray(np.atleast_1d(usedepth))
+        self.settings['depths'].attrs['UNITS'] = units
+        self.settings['depthunit'] = valid_units[units.lower()]
+        if self.settings['calc_flag'] and self.results:
+            self.results.clear()
+            self.settings['calc_flag'] = False
+
+    def set_flux(self, flux, energy, species, tau=1, mult=1):
+        """
+        Set the flux/fluence spectrum for a given incident species
+
+        Parameters
+        ----------
+        flux : array-like
+            A 1D array of differential number fluxes
+
+        energy : array-like
+            A 1D array of energies (same length as flux)
+
+        species : `str`, optional
+            Code for supplied species. Options are: 'e' (electrons);
+            'p_tr' (trapped protons); 'p_un' (untrapped protons/solar
+            energetic protons)
+
+        tau : `int`, optional
+            Simulation interval in seconds. If flux input is given
+            and assumed constant over the interval, tau should be set
+            to the desired duration. If fluence input is given, this
+            should be set to 1 (default).
+
+        mult : `int`, optional
+            Multiplier to convert from [1/energy] to [1/MeV], if energies
+            are in keV and flux is [1/keV] then mult=1000. Default is 1.
+        """
+        self.settings[f'energy_{species}'] = np.atleast_1d(energy)
+        self.settings[f'flux_{species}'] = np.atleast_1d(flux)
+        if len(energy) != len(flux):
+            raise ValueError('Flux and energy arrays must have same length.')
+        self.settings['tau'] = tau
+        self.settings['unit_en'] = mult
+        if self.settings['calc_flag'] and self.results:
+            self.results.clear()
+            self.settings['calc_flag'] = False
+
+    def get_dose(self, detector=3, nucmeth=1, fluence='NASA'):
+        """Calculate dose (given shielding/incident flux)
+
+        Shielding calculation results are stored in `results`.
+
+        Parameters
+        ----------
+        detector : `int`, optional
+            Detector type, default is Silicon (type 3). Detector
+            materials options are: 1-Aluminium; 2-Graphite; 3-Silicon;
+            4-Air; 5-Bone; 6-Calcium Fluoride; 7-Gallium Arsenide;
+            8-Lithium Fluoride; 9-Silicon Dioxide; 10-Tissue; 11-Water
+
+        nucmeth : `int`, optional
+            Nuclear interactions settings. Option 1 (default), no nuclear
+            attenuation for protons in Al. 2. Nuclear attenuation, local
+            charged secondary energy deposition. 3. As 2. but with approx.
+            exponential distribution of neutron dose.
+
+        fluence : `str`, optional
+            If the detector type is Silicon, the results contain an
+            estimate of the integral fluence at each depth of shielding.
+            This is calculated from the Silicon dose with an empirical
+            conversion factor. The default is 'nasa' (aka 'wenaas').
+            The other options are 'coakley' and 'dictat'. See appendix
+            C.4.1 of NASA-HDBK-4002 for details.
+
+        Examples
+        --------
+        Example calculation of dose-depth curve, compare to figure 3 in
+        https://www.vdl.afrl.af.mil/programs/ae9ap9/files/techreports/20160513_Aerospace_OBrien_ATR-2016-01756_effects_kernels.pdf
+
+        >>> import spacepy.irbempy
+        >>> import matplotlib.pyplot as plt
+        >>> import spacepy.plot
+        >>> spacepy.plot.style('default')
+        >>> dosemod = spacepy.irbempy.Shieldose2()
+        >>> dosemod.get_dose()
+        >>> dosemod.results.tree()
+        >>> dosemod.plot_dose(source=['e', 'brems', 'p_un'])
+        >>> plt.show()
+
+        """
+        self.settings['detector'] = detector
+        self.settings['nucmeth'] = nucmeth
+
+        detmat = {1: 'Aluminium', 2: 'Graphite',
+                  3: 'Silicon', 4: 'Air', 5: 'Bone',
+                  6: 'Calcium Fluoride',
+                  7: 'Gallium Arsenide',
+                  8: 'Lithium Fluoride',
+                  9: 'Silicon Dioxide',
+                  10: 'Tissue', 11: 'Water'}
+        if detector in detmat:
+            self.settings['detector_material'] = detmat[detector]
+        else:
+            opts = [f'{k}: {v}' for k, v in detmat.items()]
+            optstr = '; '.join(opts)
+            raise ValueError(f'Invalid detector option ({detector}).' +
+                             f'Valid options are {optstr}')
+
+        def expand_dict(argdict):
+            argdict['len_e'] = len(argdict['energy_e'])
+            argdict['jemax'] = len(argdict['energy_e'])
+            argdict['emine'] = argdict['energy_e'].min()
+            argdict['emaxe'] = argdict['energy_e'].max()
+            argdict['len_p'] = len(argdict['energy_p_un'])
+            argdict['jpmax'] = len(argdict['energy_p_un'])
+            argdict['jsmax'] = len(argdict['energy_p_un'])
+            argdict['eminpun'] = argdict['energy_p_un'].min()
+            argdict['emaxpun'] = argdict['energy_p_un'].max()
+            argdict['eminptr'] = argdict['energy_p_tr'].min()
+            argdict['emaxptr'] = argdict['energy_p_tr'].max()
+            argdict['ndepth'] = len(argdict['depths'])
+            return argdict
+
+        settings = expand_dict(self.settings)
+
+        callorder = ['detector', 'nucmeth', 'ndepth', 'depthunit',
+                     'depths', 'eminpun', 'emaxpun', 'eminptr', 'emaxptr',
+                     'len_p', 'emine', 'emaxe', 'len_e', 'jsmax',
+                     'jpmax', 'jemax', 'unit_en', 'tau']
+        # Add items in order required for IRBEMlib call
+        call = OrderedDict()
+        for value in callorder:
+            call[value] = settings.get(value, None)
+        # fix array inputs
+        dpad = 71 - len(call['depths'])
+        call['depths'] = np.pad(call['depths'], (0, dpad), mode='constant')
+        esin = settings.get('energy_p_un', None)
+        epin = settings.get('energy_p_tr', None)
+        eein = settings.get('energy_e', None)
+        ppad = 301 - len(epin)
+        epad = 301 - len(eein)
+        call['energy_s'] = np.pad(esin, (0, ppad), mode='constant')
+        call['flux_p_un'] = settings.get('flux_p_tr', None)
+        call['flux_p_un'] = np.pad(call['flux_p_un'], (0, ppad), mode='constant')
+        call['energy_p'] = np.pad(epin, (0, ppad), mode='constant')
+        call['flux_p_tr'] = settings.get('flux_p_tr', None)
+        call['flux_p_tr'] = np.pad(call['flux_p_tr'], (0, ppad), mode='constant')
+        call['energy_e'] = np.pad(eein, (0, epad), mode='constant')
+        call['flux_e'] = settings.get('flux_e', None)
+        call['flux_e'] = np.pad(call['flux_e'], (0, epad), mode='constant')
+        dose_tup = oplib.shieldose2(*call.values())
+        # Now flag results as generated
+        self.settings['calc_flag'] = True
+
+        # calculate shielded integral fluence from Dose-Si
+        # see appendix C.4.1 of NASA-HDBK-4002
+        fl_convert = {'nasa': 2.4e7,
+                      'coakley': 5e7,
+                      'dictat': 3.3e7}
+        fl_convert['wenaas'] = fl_convert['nasa']
+
+        self.results.clear()
+        outdict = self.results
+        nd = call['ndepth']
+        outdict['dose_proton_untrapped'] = dm.dmarray(dose_tup[0][:nd, :])
+        outdict['dose_proton_trapped'] = dm.dmarray(dose_tup[1][:nd, :])
+        outdict['dose_electron'] = dm.dmarray(dose_tup[2][:nd, :])
+        outdict['dose_bremsstrahlung'] = dm.dmarray(dose_tup[3][:nd, :])
+        outdict['dose_total'] = dm.dmarray(dose_tup[4][:nd, :])
+        outdict['depths'] = dm.dmarray(self.settings['depths'])
+        if detector == 3:
+            cfac = fl_convert.get(fluence.lower(), fl_convert['nasa'])
+            if fluence.lower() not in fl_convert:
+                wstr = f'{fluence} not a supported fluence model. Defaulting to NASA.'
+                warnings.warn(wstr)
+            outdict['fluence_electron'] = dm.dmarray(outdict['dose_electron']
+                                                     * cfac)
+            ftext = f'Fluence calculated from Dose-Si using {fluence} model'
+            outdict['fluence_electron'].attrs['NOTES'] = ftext
+
+    def plot_dose(self, source=['e', 'brems', 'p_tr', 'p_un'],
+                  target=None, loc=111, add_legend=True, **kwargs):
+        """
+        Make plot of dose versus depth for contributing sources
+
+        Parameters
+        ----------
+        source : `list` of `str`
+            List of dose contributions to plot. Supported options are:
+            e (electrons); brems (Bremsstrahlung); p_tr (trapped
+            protons); p_un (untrapped protons); tot (total dose). If
+            both 'e' and 'brems' are present in the list they will be
+            summed and plotted.
+
+        target : `matplotlib.axes.Axes` or `matplotlib.figure.Figure`, optional
+            The target object for plotting. Default is to create a new
+            figure with a single subplot. If ``Axes``, will draw into
+            that subplot (and will not draw a legend or figure title);
+            if ``Figure``, will make a single subplot (and not set
+            figure title). Handled by `~.plot.utils.set_target`.
+
+        loc : `int`, optional
+            The subplot triple that specifies the location of the axes object.
+            Defaults to matplotlib default (111).
+
+        add_legend : `bool`
+            If True (default) add a legend to the figure.
+        """
+        from spacepy.plot.utils import set_target
+        fig, ax = set_target(target, figsize=(10, 6), loc=loc)
+        linesets = []
+        res = self.results
+        geometries = ['Semi-Inf Slab', 'Finite Slab', 'Spherical']
+        pls = ['solid', 'dashdot', 'dashed']
+        if 'e' in source:
+            plotvar = dm.dmcopy(res['dose_electron'])
+            plab = 'Electrons'
+            if 'brems' in source:
+                plotvar = plotvar + res['dose_bremsstrahlung']
+                plab = plab + ' (incl. Bremsstrahlung)'
+            for gidx, geometry in enumerate(geometries):
+                ulab = plab + '\n{}'.format(geometry)
+                linesets.append(ax.loglog(res['depths'], plotvar[:, gidx],
+                                ls=pls[gidx], label=ulab, **kwargs))
+        elif 'brems' in source:
+            # in case brems is given, but not 'e'
+            plotvar = res['dose_bremsstrahlung']
+            plab = 'Bremsstrahlung'
+            for gidx, geometry in enumerate(geometries):
+                ulab = plab + '\n{}'.format(geometry)
+                linesets.append(ax.loglog(res['depths'], plotvar[:, gidx],
+                                ls=pls[gidx], label=ulab, **kwargs))
+        if 'p_tr' in source:
+            plotvar = dm.dmcopy(res['dose_proton_trapped'])
+            plab = 'Protons (trapped)'
+            for gidx, geometry in enumerate(geometries):
+                ulab = plab + '\n{}'.format(geometry)
+                linesets.append(ax.loglog(res['depths'], plotvar[:, gidx],
+                                ls=pls[gidx], label=ulab, **kwargs))
+        if 'p_un' in source:
+            plotvar = dm.dmcopy(res['dose_proton_untrapped'])
+            plab = 'Protons (untrapped)'
+            for gidx, geometry in enumerate(geometries):
+                ulab = plab + '\n{}'.format(geometries[gidx])
+                linesets.append(ax.loglog(res['depths'], plotvar[:, gidx],
+                                ls=pls[gidx], label=ulab, **kwargs))
+        if 'tot' in source:
+            plotvar = dm.dmcopy(res['dose_total'])
+            plab = 'Total'
+            for gidx, geometry in enumerate(geometries):
+                ulab = plab + '\n{}'.format(geometries[gidx])
+                linesets.append(ax.loglog(res['depths'], plotvar[:, gidx],
+                                ls=pls[gidx], label=ulab, **kwargs))
+        if add_legend:
+            ax.legend()
+
+        ax.set_xlabel('Depth [{}]'.format(self.settings['depths'].attrs['UNITS']))
+        ax.set_ylabel('Dose [{}]'.format(self.settings['detector_material']))
+
+        return fig, ax, linesets
 
 
 # -----------------------------------------------
@@ -1779,11 +2135,7 @@ def prep_irbem(ticks=None, loci=None, alpha=[], extMag='T01STORM', options=[1, 0
         # Convert car -> sph or vice versa as required
         newcarsph = [key for (key, val) in spc.SYSAXES_TYPES[loci.dtype].items()
                      if val is not None][0]
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                    category=DeprecationWarning,
-                                    module=r'spacepy.coordinates$')
-            posi = loci.convert(loci.dtype, newcarsph)
+        posi = loci.convert(loci.dtype, newcarsph)
     else:
         posi = loci
     d['sysaxes'] = posi.sysaxes

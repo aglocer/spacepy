@@ -16,6 +16,15 @@ This release marks the end of all support for Python 2. SpacePy now
 requires Python 3.6 or later. Minimum supported versions for other
 dependencies were also increased; see :ref:`release_0_5_0_deps` for details.
 
+Due to changes in f2py, SpacePy 0.5.0 will not build on Python 3.12
+with numpy 1.26 or later. It will, however, run fine. The SpacePy team
+provides binary wheels for Mac and Windows. Linux users who wish to
+use Python 3.12 should first install numpy (which will likely be built
+from source)::
+
+  pip install --no-build-isolation "numpy<1.26"
+  pip install --no-build-isolation spacepy
+
 .. _release_0_5_0_deps:
 
 Dependency requirements
@@ -56,6 +65,10 @@ ISTP-compliant metadata; see `~.datamodel.dmarray` and
 `~.datamodel.SpaceData` for details. In particular note the plotting
 support with `~.datamodel.ISTPContainer.plot`.
 
+`~.irbempy` now provides an interface to the SHIELDOSE-2 shielding
+radiation dose model. This is implemented through the
+`~.irbempy.Shieldose2` class.
+
 `~.plot.spectrogram.simpleSpectrogram()` supports treating zeros as
 valid data on log plots.
 
@@ -87,6 +100,19 @@ The new pip-based install method does not support a separate ``build``
 step so `~spacepy_testing.add_build_to_path` is deprecated. Alternatives
 include using an :ref:`editable install <install_--editable>` or installing
 in a custom location using :ref:`\\\\\\-\\\\\\-prefix <install_--prefix>` and manually editing :envvar:`PYTHONPATH`.
+
+:mod:`~spacepy.coordinates` no longer warns if a backend (irbem or
+SpacePy) is not specified. The default backend is SpacePy, as it has
+been since 0.4.0.
+
+In `~spacepy.time`, the ``cls`` argument of
+`~spacepy.time.Ticktock.update_items` has been removed (deprecated in 0.2.2).
+The end-user normally does not call this function.
+
+In `~spacepy.pybats.bats`, removed ``add_b_magsphere_legacy`` and
+``add_b_magsphere_new``, which were deprecated in 0.2.0. Use
+:meth:`~spacepy.pybats.bats.Bats2d.add_b_magsphere` (which is the same as
+``add_b_magsphere_new``).
 
 Major bugfixes
 **************

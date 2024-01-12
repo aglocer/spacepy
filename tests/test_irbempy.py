@@ -8,7 +8,6 @@ Copyright 2010-2012 Los Alamos National Security, LLC.
 
 import unittest
 import spacepy_testing
-import warnings
 import spacepy
 import spacepy.omni
 import spacepy.time
@@ -21,18 +20,14 @@ import numpy as np
 import numpy.testing
 from numpy import array
 
-__all__ = ['IRBEMBigTests', 'IRBEMTestsWithoutOMNI']
+__all__ = ['IRBEMBigTests', 'IRBEMTestsWithoutOMNI', 'IRBEMShieldoseTests']
 
 
 class IRBEMBigTests(unittest.TestCase):
 
     def setUp(self):
         self.ticks = spacepy.time.Ticktock(['2001-02-02T12:00:00', '2001-02-02T12:10:00'], 'ISO')
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                    category=DeprecationWarning,
-                                    module=r'spacepy.coordinates$')
-            self.loci = spacepy.coordinates.Coords([[3,0,0],[2,0,0]], 'GEO', 'car', use_irbem=True)
+        self.loci = spacepy.coordinates.Coords([[3,0,0],[2,0,0]], 'GEO', 'car', use_irbem=True)
         self.omnivals = spacepy.omni.get_omni(self.ticks, dbase='Test')
 
     def test_prep_irbem(self):
@@ -210,27 +205,19 @@ class IRBEMBigTests(unittest.TestCase):
     def test_AlphaOfK(self):
         '''test calculation of eq. pitch angle from K (regression)'''
         t = spacepy.time.Ticktock(['2001-09-01T04:00:00'], 'ISO')
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                    category=DeprecationWarning,
-                                    module=r'spacepy.coordinates$')
-            loci = spacepy.coordinates.Coords([-4,0,0], 'GSM', 'car', use_irbem=True)
+        loci = spacepy.coordinates.Coords([-4,0,0], 'GSM', 'car', use_irbem=True)
         ans = spacepy.irbempy.AlphaOfK(t, loci, 0.11, extMag='T89', omnivals=self.omnivals)
         numpy.testing.assert_almost_equal(ans, 50.625, decimal=5)
 
     def test_find_footpoint(self):
         '''test computation of field line footpoint location/magnitude (regression)'''
         expected = {'Bfoot': numpy.array([ 47626.93407,  47625.97051])}
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                    category=DeprecationWarning,
-                                    module=r'spacepy.coordinates$')
-            expected['loci'] = spacepy.coordinates.Coords([[ 99.28759,  56.14644, -10.29427],
+        expected['loci'] = spacepy.coordinates.Coords([[ 99.28759,  56.14644, -10.29427],
                                                            [ 99.33375,  56.14603, -10.29737]],
                                                            dtype='GDZ', carsph='sph',
                                                            units=['km', 'deg', 'deg'],
                                                            use_irbem=True)
-            y = spacepy.coordinates.Coords([[3,0,0],[3,0,0]], 'GEO', 'car', use_irbem=True)
+        y = spacepy.coordinates.Coords([[3,0,0],[3,0,0]], 'GEO', 'car', use_irbem=True)
         ans = spacepy.irbempy.find_footpoint(self.ticks, y, omnivals=self.omnivals)
         numpy.testing.assert_almost_equal(expected['Bfoot'], ans['Bfoot'], decimal=5)
         numpy.testing.assert_almost_equal(expected['loci'].data, ans['loci'].data, decimal=5)
@@ -240,11 +227,7 @@ class IRBEMTestsWithoutOMNI(unittest.TestCase):
 
     def setUp(self):
         self.ticks = spacepy.time.Ticktock(['2002-02-02T12:00:00', '2002-02-02T12:10:00'], 'ISO')
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                    category=DeprecationWarning,
-                                    module=r'spacepy.coordinates$')
-            self.loci = spacepy.coordinates.Coords([[3,0,0],[2,0,0]], 'GEO', 'car', use_irbem=True)
+        self.loci = spacepy.coordinates.Coords([[3,0,0],[2,0,0]], 'GEO', 'car', use_irbem=True)
 
     def test_get_dtype(self):
         sysaxes = 3
@@ -253,20 +236,12 @@ class IRBEMTestsWithoutOMNI(unittest.TestCase):
 
     def test_prep_irbem_sysaxesnone(self):
         """prep_irbem should handle 'car' and 'sph' version of systems identically"""
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                    category=DeprecationWarning,
-                                    module=r'spacepy.coordinates$')
-            locc = spacepy.coordinates.Coords([[3, 0, 0], [2, 0, 0]],
-                                              'GSM', 'car', use_irbem=True)
+        locc = spacepy.coordinates.Coords([[3, 0, 0], [2, 0, 0]],
+                                          'GSM', 'car', use_irbem=True)
         out1 = ib.prep_irbem(ticks=self.ticks, loci=locc,
                              extMag='0', options=[1, 0, 0, 0, 1])
         pos = spacepy.coordinates.car2sph(locc.data)
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message=r'Use of IRBEM to perform',
-                                    category=DeprecationWarning,
-                                    module=r'spacepy.coordinates$')
-            locs = spacepy.coordinates.Coords(pos, 'GSM', 'sph', use_irbem=True)
+        locs = spacepy.coordinates.Coords(pos, 'GSM', 'sph', use_irbem=True)
         out2 = ib.prep_irbem(ticks=self.ticks, loci=locs,
                              extMag='0', options=[1, 0, 0, 0, 1])
         self.assertEqual(out1['sysaxes'], out2['sysaxes'])
@@ -290,25 +265,267 @@ class IRBEMTestsWithoutOMNI(unittest.TestCase):
 
     def test_get_AEP8(self):
         """test get_AEP8"""
-        c=self.loci
+        c = self.loci
         c.ticks = self.ticks
-        E = 2.0 # energy in MeV
+        E = 2.0  # energy in MeV
         expected = 99492.059080021136
         actual = ib.get_AEP8(E, c)
         numpy.testing.assert_almost_equal(expected, actual)
+
+
+class IRBEMShieldoseTests(spacepy_testing.TestPlot):
+
+    maxDiff = None
+
+    def setUp(self):
+        super(IRBEMShieldoseTests, self).setUp()
+        self.depths_mil = np.logspace(np.log10(4), np.log10(5000), 30)
+        self.depths_mm = self.depths_mil * 0.0254
+        self.sd_default = ib.Shieldose2()
+
+    def test_setshielding(self):
+        """Setting shielding should appropriately update settings
+        """
+        sdd = self.sd_default
+        tunit = 'mm'
+        target = np.logspace(0, 3, 50)
+        tcopy = target.copy()
+        sdd.set_shielding(depths=target, units=tunit)
+        target *= 2  # make sure we're not modifying arrays
+        curr_dep = np.asarray(sdd.settings['depths'].copy())
+        numpy.testing.assert_array_almost_equal(tcopy, curr_dep)
+        numpy.testing.assert_string_equal(sdd.settings['depths'].attrs['UNITS'], tunit)
+
+    def test_mil_mm(self):
+        """Should get same results for different depth units
+        """
+        sd1 = self.sd_default
+        sd1.set_shielding(depths=self.depths_mil, units='Mil')
+        sd1.get_dose()
+        sd2 = ib.Shieldose2()
+        sd2.set_shielding(depths=self.depths_mm, units='mm')
+        sd2.get_dose()
+        de1 = np.asarray(sd1.results['dose_electron'])
+        de2 = np.asarray(sd2.results['dose_electron'])
+        numpy.testing.assert_array_almost_equal(de1, de2)
+
+    def test_shieldose2_changed(self):
+        """Results should be removed if settings are changed
+        """
+        self.assertFalse(self.sd_default.results)
+        self.sd_default.get_dose()
+        self.assertTrue(self.sd_default.results)
+        self.sd_default.set_shielding(depths=self.depths_mm, units='mm')
+        self.assertFalse(self.sd_default.results)
+
+    def test_invalid_det(self):
+        """Asking for invalid detector material raises ValueError
+        """
+        self.assertRaises(ValueError, self.sd_default.get_dose, detector=99)
+
+    def test_invalid_fluence(self):
+        """Asking for invalid fluence model issues UserWarning
+        """
+        self.assertWarns(UserWarning,
+                         self.sd_default.get_dose,
+                         fluence='notamodel')
+
+    def test_e_j_mismatch(self):
+        """Mismatched flux energy array sizes raises ValueError
+        """
+        jarr = np.logspace(0, 4, 35)[::-1]
+        earr = np.logspace(1, 10, 40)
+        self.assertRaises(ValueError, self.sd_default.set_flux,
+                          jarr, earr, 'e')
+
+    def test_plot_e(self):
+        """Check for expected outputs in electron dose plot"""
+        self.sd_default.get_dose()
+        res = self.sd_default.results
+        f1, a1, l1 = self.sd_default.plot_dose(source=['e'])
+        f2, a2, l2 = self.sd_default.plot_dose(source=['e', 'brems'])
+        self.assertEqual(3, len(l1))
+        self.assertEqual(3, len(l2))
+        np.testing.assert_array_equal(l1[0][0].get_xdata(),
+                                      res['depths'])
+        np.testing.assert_array_equal(l1[0][0].get_ydata(),
+                                      res['dose_electron'][:, 0])
+        np.testing.assert_array_equal(l2[0][0].get_ydata(),
+                                      res['dose_electron'][:, 0] +
+                                      res['dose_bremsstrahlung'][:, 0])
+        self.assertEqual('Dose [Silicon]', a1.get_ylabel())
+        self.assertEqual('Depth [Mil]', a1.get_xlabel())
+
+    def test_plot_p_noleg(self):
+        """Check for expected outputs in proton dose plot"""
+        self.sd_default.get_dose()
+        res = self.sd_default.results
+        f1, a1, l1 = self.sd_default.plot_dose(source=['p_tr'],
+                                               add_legend=False)
+        self.assertEqual(3, len(l1))
+        np.testing.assert_array_equal(l1[0][0].get_xdata(),
+                                      res['depths'])
+        np.testing.assert_array_equal(l1[0][0].get_ydata(),
+                                      res['dose_proton_trapped'][:, 0])
+        self.assertEqual('Dose [Silicon]', a1.get_ylabel())
+        self.assertEqual('Depth [Mil]', a1.get_xlabel())
+        self.assertIs(None, a1.get_legend())
+
+    def test_plot_brems(self):
+        """Check for expected outputs in bremsstrahlung-only dose plot"""
+        self.sd_default.get_dose()
+        res = self.sd_default.results
+        f, a, l = self.sd_default.plot_dose(source=['brems'])
+        self.assertEqual(3, len(l))
+        np.testing.assert_array_equal(l[0][0].get_xdata(),
+                                      res['depths'])
+        np.testing.assert_array_equal(l[0][0].get_ydata(),
+                                      res['dose_bremsstrahlung'][:, 0])
+        self.assertEqual('Dose [Silicon]', a.get_ylabel())
+        self.assertEqual('Depth [Mil]', a.get_xlabel())
+
+    def test_plot_p_un(self):
+        """Check for expected outputs in untrapped proton dose plot"""
+        self.sd_default.get_dose()
+        res = self.sd_default.results
+        f, a, l = self.sd_default.plot_dose(source=['p_un'])
+        self.assertEqual(3, len(l))
+        np.testing.assert_array_equal(l[0][0].get_xdata(),
+                                      res['depths'])
+        np.testing.assert_array_equal(l[0][0].get_ydata(),
+                                      res['dose_proton_untrapped'][:, 0])
+        leg = a.get_legend()
+        self.assertEqual(
+            [f"Protons (untrapped)\n{g}" for g in
+             ['Semi-Inf Slab', 'Finite Slab', 'Spherical']],
+            [t.get_text() for t in leg.texts])
+
+    def test_plot_tot(self):
+        """Check for expected outputs in total dose plot"""
+        self.sd_default.get_dose()
+        res = self.sd_default.results
+        f, a, l = self.sd_default.plot_dose(source=['tot'])
+        self.assertEqual(3, len(l))
+        np.testing.assert_array_equal(l[0][0].get_xdata(),
+                                      res['depths'])
+        np.testing.assert_array_equal(l[0][0].get_ydata(),
+                                      res['dose_total'][:, 0])
+
+    def test_regression_si(self):
+        """Check for expected numerical result"""
+        expect_tot_500 = np.array([2.174920520699405e-15,
+                                   1.7185079165053166e-15,
+                                   4.750370701125187e-15])
+        self.sd_default.set_shielding(depths=[100, 500, 1000], units='Mil')
+        self.sd_default.get_dose(detector=3)
+        dtot = np.asarray(self.sd_default.results['dose_total'])
+        np.testing.assert_array_almost_equal(dtot[1, :], expect_tot_500,
+                                             decimal=15)
+
+    def test_str(self):
+        """Check string representation"""
+        self.sd_default.set_shielding(depths=self.depths_mil, units='Mil')
+        res = str(self.sd_default)
+        expected = """spacepy.irbempy.irbempy.Shieldose2
+|____settings
+     |____calc_flag (bool)
+     |____depths (spacepy.datamodel.dmarray (30,))
+         :|____UNITS (str [3])
+     |____depthunit (int)
+     |____energy_e (numpy.ndarray (30,))
+     |____energy_p_tr (numpy.ndarray (299,))
+     |____energy_p_un (numpy.ndarray (299,))
+     |____flux_e (numpy.ndarray (30,))
+     |____flux_p_tr (numpy.ndarray (299,))
+     |____flux_p_un (numpy.ndarray (299,))
+     |____tau (int)
+     |____unit_en (int)
+"""
+        self.assertEqual(expected, res)
+        self.sd_default.get_dose()
+        res = str(self.sd_default)
+        expected = """spacepy.irbempy.irbempy.Shieldose2
+|____settings
+     |____calc_flag (bool)
+     |____depths (spacepy.datamodel.dmarray (30,))
+         :|____UNITS (str [3])
+     |____depthunit (int)
+     |____detector (int)
+     |____detector_material (str [7])
+     |____emaxe (numpy.float64 ())
+     |____emaxptr (numpy.float64 ())
+     |____emaxpun (numpy.float64 ())
+     |____emine (numpy.float64 ())
+     |____eminptr (numpy.float64 ())
+     |____eminpun (numpy.float64 ())
+     |____energy_e (numpy.ndarray (30,))
+     |____energy_p_tr (numpy.ndarray (299,))
+     |____energy_p_un (numpy.ndarray (299,))
+     |____flux_e (numpy.ndarray (30,))
+     |____flux_p_tr (numpy.ndarray (299,))
+     |____flux_p_un (numpy.ndarray (299,))
+     |____jemax (int)
+     |____jpmax (int)
+     |____jsmax (int)
+     |____len_e (int)
+     |____len_p (int)
+     |____ndepth (int)
+     |____nucmeth (int)
+     |____tau (int)
+     |____unit_en (int)
+|____results
+     |____depths (spacepy.datamodel.dmarray (30,))
+     |____dose_bremsstrahlung (spacepy.datamodel.dmarray (30, 3))
+     |____dose_electron (spacepy.datamodel.dmarray (30, 3))
+     |____dose_proton_trapped (spacepy.datamodel.dmarray (30, 3))
+     |____dose_proton_untrapped (spacepy.datamodel.dmarray (30, 3))
+     |____dose_total (spacepy.datamodel.dmarray (30, 3))
+     |____fluence_electron (spacepy.datamodel.dmarray (30, 3))
+         :|____NOTES (str [48])
+"""
+        self.assertEqual(expected, res)
+
+    def test_repr(self):
+        """Check representation"""
+        self.sd_default.set_shielding(depths=self.depths_mil, units='Mil')
+        res = repr(self.sd_default)
+        expected = "<Shieldose2(Depths = 30; Dose not calculated)>"
+        self.assertEqual(expected, res)
+        self.sd_default.get_dose()
+        res = repr(self.sd_default)
+        expected = "<Shieldose2(Depths = 30; Dose calculated)>"
+        self.assertEqual(expected, res)
+
+    def test_bad_units(self):
+        """Pass invalid units"""
+        with self.assertRaises(ValueError) as cm:
+            self.sd_default.set_shielding(depths=self.depths_mil, units='junk')
+        expected = "Units must be one of mil, g/cm2, mm, not junk"
+        self.assertEqual(expected, str(cm.exception))
+
+    def test_reset_flux(self):
+        """Check representation"""
+        self.sd_default.set_shielding(depths=self.depths_mil, units='Mil')
+        self.assertFalse(self.sd_default.results)
+        self.assertFalse(self.sd_default.settings['calc_flag'])
+        self.sd_default.get_dose()
+        self.assertTrue(self.sd_default.results)
+        self.assertTrue(self.sd_default.settings['calc_flag'])
+        en_e = np.arange(10)
+        # Nonsense, but it's different nonsense
+        self.sd_default.set_flux(en_e ** 2, en_e, 'e')
+        self.assertFalse(self.sd_default.results)
+        self.assertFalse(self.sd_default.settings['calc_flag'])
+
+
 # -----------------------------------------------------------------------
 
 
-if	__name__	==	"__main__":
-    ##	suite	=	unittest.TestLoader().loadTestsFromTestCase(SimpleFunctionTests)
-    ##	unittest.TextTestRunner(verbosity=2).run(suite)
+if __name__ == "__main__":
+    # suite	=	unittest.TestLoader().loadTestsFromTestCase(SimpleFunctionTests)
+    # unittest.TextTestRunner(verbosity=2).run(suite)
 
-    ##	suite	=	unittest.TestLoader().loadTestsFromTestCase(tFunctionTests)
-    ##	unittest.TextTestRunner(verbosity=2).run(suite)
+    # suite	=	unittest.TestLoader().loadTestsFromTestCase(tFunctionTests)
+    # unittest.TextTestRunner(verbosity=2).run(suite)
 
     unittest.main()
-
-
-
-
-
