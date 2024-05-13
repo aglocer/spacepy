@@ -40,14 +40,15 @@ Due to a numpy bug, numpy 1.15.0 is not supported. Use 1.15.1 or later.
 
 On Python 3.9, numpy 1.18 or later is required.
 
-dateutil
---------
-`dateutil <https://dateutil.readthedocs.io/>`_ 2.1 or later is required.
+dateutil 2.5+
+-------------
+`dateutil <https://dateutil.readthedocs.io/>`_ 2.5 or later is required.
 
 C compiler
 ----------
-If you are installing SpacePy from source, a working C compiler
-is required. (Not necessary for the Windows binary installer.)
+If you are installing SpacePy from source, a working C compiler is
+required. (Not necessary for binary wheels, provided on most
+platforms.)
 
 pip
 ---
@@ -115,20 +116,21 @@ CDF 3.5+
 NASA's `CDF <http://cdf.gsfc.nasa.gov/>`_ library provides access to
 Common Data Format files. It is required for :mod:`~spacepy.pycdf`,
 and thus for the CDF import/export capability of
-:mod:`~spacepy.datamodel`.
+:mod:`~spacepy.datamodel`. The library is included with SpacePy binary
+wheels, but a locally-installed library will be used instead if it is
+found.
 
 .. warning::
-    Unlike the Python-based dependencies, the CDF library must be
-    installed if pycdf support is needed; it will not be automatically
-    installed.
+    If building SpacePy from source, the CDF library must be installed
+    if pycdf support is needed. It can be installed after SpacePy.
 
 .. _dependencies_fortran:
 
 Fortran compiler
 ----------------
 If installing from source, :mod:`~spacepy.irbempy` requires a Fortran
-compiler. (This is not required for the Windows binary installer).
-The Supported compiler is the GNU compiler ``gfortran``.
+compiler. This is not required if using a binary wheel. The supported
+compiler is the GNU compiler ``gfortran``.
 
 If :mod:`~spacepy.irbempy` is to be used, the Fortran compiler (and
 f2py) must be installed before SpacePy.
@@ -147,6 +149,16 @@ Astropy :class:`~astropy.time.Time` is desired.
 
 :mod:`~spacepy.coordinates` requires Astropy if conversion to/from
 Astropy :class:`~astropy.coordinates.SkyCoord` is desired.
+
+Because Astropy is only required for these conversions, it is not
+automatically installed with SpacePy.
+
+.. _dependencies_pandas:
+
+Pandas 0.18+
+------------
+`Pandas <https://pandas.pydata.org/>`_ is only required if converting
+from `~.datamodel.SpaceData` to `~pandas.DataFrame` is desired.
 
 Soft Dependency Summary
 =======================
@@ -167,14 +179,16 @@ unaffected by that dependency.
      - :ref:`matplotlib <dependencies_mpl>`
      - :ref:`SciPy <dependencies_scipy>`
      - :ref:`AstroPy <dependencies_astropy>`
+     - :ref:`Pandas <dependencies_pandas>`
    * - :mod:`~spacepy.coordinates`
      -
-     - :class:`~spacepy.coordinates.Coords` IRBEM backend (except Windows binaries)
+     - :class:`~spacepy.coordinates.Coords` IRBEM backend (except binaries)
      -
      -
      - :mod:`Entire module <spacepy.coordinates>`
      - * :meth:`~spacepy.coordinates.Coords.from_skycoord`
        * :meth:`~spacepy.coordinates.Coords.to_skycoord`
+     -
    * - :mod:`~spacepy.ctrans`
      -
      -
@@ -182,10 +196,12 @@ unaffected by that dependency.
      -
      - :mod:`Entire module <spacepy.ctrans>`
      -
+     -
    * - :mod:`~spacepy.datamodel`
      - * :meth:`~spacepy.datamodel.SpaceData.toCDF`
        * :func:`~spacepy.datamodel.fromCDF`
        * :func:`~spacepy.datamodel.toCDF`
+       * (except binaries)
      -
      - * :meth:`~spacepy.datamodel.SpaceData.toHDF5`
        * :func:`~spacepy.datamodel.fromHDF5`
@@ -193,6 +209,7 @@ unaffected by that dependency.
      -
      -
      -
+     - `~.datamodel.ISTPContainer.toDataFrame`
    * - :mod:`~spacepy.empiricals`
      -
      -
@@ -201,14 +218,17 @@ unaffected by that dependency.
      - * :func:`~spacepy.empiricals.vampolaPA`
        * :func:`~spacepy.empiricals.omniFromDirectionalFlux`
      -
+     -
    * - :mod:`~spacepy.irbempy`
      -
-     - :mod:`Entire module <spacepy.irbempy>` (except Windows binaries)
+     - :mod:`Entire module <spacepy.irbempy>` (except binaries)
+     -
      -
      -
      -
      -
    * - :mod:`~spacepy.LANLstar`
+     -
      -
      -
      -
@@ -222,11 +242,13 @@ unaffected by that dependency.
      -
      -
      -
+     -
    * - :mod:`~spacepy.plot`
      -
      -
      -
      - :mod:`Entire module <spacepy.plot>`
+     -
      -
      -
    * - :mod:`~spacepy.poppy`
@@ -237,6 +259,7 @@ unaffected by that dependency.
        * :meth:`~spacepy.poppy.PPro.plot`
        * :meth:`~spacepy.poppy.PPro.plot_mult`
        * :func:`~spacepy.poppy.plot_two_ppro`
+     -
      -
      -
    * - :mod:`~spacepy.pybats`
@@ -280,8 +303,10 @@ unaffected by that dependency.
        * :func:`~spacepy.pybats.trace2d.test_dipole`
      -
      -
+     -
    * - :mod:`~spacepy.pycdf`
-     - :mod:`Entire module <spacepy.pycdf>`
+     - :mod:`Entire module <spacepy.pycdf>` (except binaries)
+     -
      -
      -
      -
@@ -295,12 +320,14 @@ unaffected by that dependency.
        * :meth:`~spacepy.radbelt.RBmodel.plot_obs`
      -
      -
+     -
    * - :mod:`~spacepy.seapy`
      -
      -
      -
      - :mod:`Entire module <spacepy.seapy>`
      - * :func:`~spacepy.seapy.sea_signif`
+     -
      -
    * - :mod:`~spacepy.time`
      -
@@ -309,6 +336,7 @@ unaffected by that dependency.
      -
      -
      - AstroPy support in :class:`~spacepy.time.Ticktock`
+     -
    * - :mod:`~spacepy.toolbox`
      -
      -
@@ -321,4 +349,5 @@ unaffected by that dependency.
      - * :func:`~spacepy.toolbox.dist_to_list`
        * :func:`~spacepy.toolbox.intsolve`
        * :func:`~spacepy.toolbox.poisson_fit`
+     -
      -

@@ -287,7 +287,7 @@ def levelPlot(data, var=None, time=None, levels=(3, 5), target=None, colors=None
             raise TypeError('Data appears to be dict-like without a key being given')
     tflag = False
     if time is not None:
-        from scipy.stats import mode
+        import scipy.stats
         try:
             times = data[time]
         except (KeyError, ValueError, IndexError):
@@ -299,7 +299,10 @@ def levelPlot(data, var=None, time=None, levels=(3, 5), target=None, colors=None
             #the x-data are a non-datetime
             times = np.asarray(time)
         #now add the end-point
-        stepsize, dum = mode(np.diff(times), axis=None)
+        try:  # scipy 1.9 and later
+            stepsize, dum = scipy.stats.mode(np.diff(times), keepdims=False)
+        except TypeError:
+            stepsize, dum = scipy.stats.mode(np.diff(times), axis=None)
         times = np.hstack([times, times[-1]+stepsize])
     else:
         times = np.asarray(range(0, len(usearr)+1))
@@ -331,10 +334,6 @@ def levelPlot(data, var=None, time=None, levels=(3, 5), target=None, colors=None
         stepsyy = y1.repeat(2)
         y2 = np.zeros_like(stepsyy)
         ax.fill_between(stepsxx, stepsyy, y2, **kwargs)
-        if mpl.__version__<'1.5.0':
-            #pre-v1.5.0, need to manually add an artist for the legend
-            p = plt.Rectangle((0, 0), 0, 0, **kwargs)
-            ax.add_patch(p)
     
     #below threshold 1
     idx = 0
