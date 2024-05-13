@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""
-This package provides a Python interface to the Common Data Format (CDF)
+"""This package provides a Python interface to the Common Data Format (CDF)
 library used for many NASA missions, available at http://cdf.gsfc.nasa.gov/.
 
 The interface is intended to be 'pythonic' rather than reproducing the
@@ -13,15 +12,19 @@ that affect the functionality of the library in general. The
 `~spacepy.pycdf.const` module contains constants useful for accessing
 the underlying library.
 
+The CDF C library must be properly installed in order to use this
+module. Installing SpacePy from a binary installation provides this
+requirement.
 
-The CDF C library must be properly installed in order to use this package.
 The CDF distribution provides scripts meant to be called in a user's
-login scripts, ``definitions.B`` for bash and ``definitions.C`` for C-shell
-derivatives. (See the installation instructions which come with the CDF library.)
-These will set environment variables specifying the location
-of the library; pycdf will respect these variables if they are set. Otherwise
-it will search the standard system library path and the default installation
-locations for the CDF library.
+login scripts, ``definitions.B`` for bash and ``definitions.C`` for
+C-shell derivatives. (See the installation instructions which come
+with the CDF library.)  These will set environment variables
+specifying the location of the library; pycdf will respect these
+variables if they are set. Otherwise it will search the standard
+system library path and the default installation locations for the CDF
+library, falling back to the version shipped with the SpacePy binary
+if the library is not found.
 
 If pycdf has trouble finding the library, try setting ``CDF_LIB`` before importing
 the module, e.g. if the library is in ``CDF/lib`` in the user's home directory:
@@ -42,6 +45,7 @@ Contact: Jonathan.Niehof@unh.edu
 
 
 Copyright 2010-2015 Los Alamos National Security, LLC.
+
 """
 
 __contact__ = 'Jon Niehof, Jonathan.Niehof@unh.edu'
@@ -490,6 +494,12 @@ class Library(object):
                 for d in sorted(cand)[::-1]:
                     for p in search_dir(d):
                         yield p
+        # Check for a version shipped with SpacePy binary wheels
+        if isinstance(__file__, str):
+            spdir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if os.path.isdir(spdir):
+                for p in search_dir(spdir):
+                    yield p
 
     def check_status(self, status, ignore=()):
         """
@@ -1276,57 +1286,6 @@ class Library(object):
         """
         pass
 
-
-def download_library():
-    """Download and install the CDF library"""
-    if sys.platform != 'win32':
-        raise NotImplementedError(
-            'CDF library install only supported on Windows')
-    try:
-        import html.parser as HTMLParser
-    except ImportError:
-        import HTMLParser
-    #https://stackoverflow.com/questions/1713038/super-fails-with-error-typeerror-argument-1-must-be-type-not-classobj
-    class LinkParser(HTMLParser.HTMLParser, object):
-        def __init__(self, *args, **kwargs):
-            self.links_found = []
-            super(LinkParser, self).__init__(*args, **kwargs)
-        def handle_starttag(self, tag, attrs):
-            if tag != 'a' or attrs[0][0] != 'href':
-                return
-            self.links_found.append(attrs[0][1])
-    import re
-    import subprocess
-    try:
-        import urllib.request as u
-    except ImportError:
-        import urllib as u
-    import spacepy
-    if spacepy.config.get('user_agent', None):
-        class AppURLopener(u.FancyURLopener):
-            version = spacepy.config['user_agent']
-        u._urlopener = AppURLopener()
-    baseurl = 'https://spdf.gsfc.nasa.gov/pub/software/cdf/dist/'
-    url = u.urlopen(baseurl)
-    listing = url.read()
-    url.close()
-    p = LinkParser()
-    p.feed(listing)
-    cdfdist = [l for l in p.links_found if re.match(r'^cdf3\d_\d(?:_\d)?/$', l)]
-    if not cdfdist:
-        raise RuntimeError(
-            "Couldn't find CDF distribution directory to download")
-    cdfdist.sort(key=lambda x: x.rstrip('/').split('_'))
-    cdfverbase = cdfdist[-1].rstrip('/')
-    instfname = cdfverbase + ('_0' if cdfverbase.count('_') == 1 else '') + \
-                '-setup-{0}.exe'.format(len('%x' % sys.maxsize)*4)
-    insturl = baseurl + cdfverbase + '/windows/' + instfname
-    tmpdir = tempfile.mkdtemp()
-    try:
-        fname, status = u.urlretrieve(insturl, os.path.join(tmpdir, instfname))
-        subprocess.check_call([fname, '/install', '/q1'], shell=False)
-    finally:
-        shutil.rmtree(tmpdir)
 
 _libpath, _library = Library._find_lib()
 if _library is None:

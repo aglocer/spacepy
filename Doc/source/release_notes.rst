@@ -8,19 +8,48 @@ This document presents user-visible changes in each release of SpacePy.
    :depth: 2
    :local:
 
+0.6 Series
+==========
+0.6.0 (2024-04-25)
+------------------
+There are no changes to dependencies, minimum versions, or
+installation process with this release.
+
+New features
+************
+`.datamodel` supports output to Pandas
+(`~.datamodel.ISTPContainer.toDataFrame`) and input from Pandas
+(`~.datamodel.ISTPContainer.fromDataFrame`). This support requires
+pandas 0.18.0, which is not installed by default with SpacePy.
+
+`~.datamodel.dmarray` supports output to Astropy Quantities
+(`~.datamodel.ISTPArray.toQuantity`) and input from them
+(`~.datamodel.ISTPArray.fromQuantity`). This support requires Astropy
+1.0, which is not installed by default with SpacePy.
+
+`~.pybats.ImfInput` now has two new methods:
+:meth:`~.pybats.ImfInput.calc_clock` which, calculates and stores the IMF
+clock angle defined as the angle of the interplanetary magnetic field (IMF) in
+the GSM Y-Z plane; and :meth:`~.pybats.ImfInput.calc_epsilon`, which calculates
+the epsilon parameter, an approximation of power input into the magnetosphere.
+
 0.5 Series
 ==========
-0.5.0 (2022-xx-xx)
+0.5.0 (2024-03-11)
 ------------------
 This release marks the end of all support for Python 2. SpacePy now
 requires Python 3.6 or later. Minimum supported versions for other
 dependencies were also increased; see :ref:`release_0_5_0_deps` for details.
 
+The SpacePy team now delivers binary wheels for all supported Python
+versions (3.6-3.12) for 64-bit Windows, Linux, and Mac. Most users
+will not need to build SpacePy; see :doc:`install` for details.
+
 Due to changes in f2py, SpacePy 0.5.0 will not build on Python 3.12
 with numpy 1.26 or later. It will, however, run fine. The SpacePy team
-provides binary wheels for Mac and Windows. Linux users who wish to
-use Python 3.12 should first install numpy (which will likely be built
-from source)::
+provides binary wheels for Mac and Windows. Users who wish to build
+from source on Python 3.12 should first install numpy (which will
+likely be built from source)::
 
   pip install --no-build-isolation "numpy<1.26"
   pip install --no-build-isolation spacepy
@@ -37,6 +66,8 @@ The ``setup.py`` based install process is no longer supported; as such,
 ``pip`` and ``setuptools`` are now required. ``wheel`` is required if
 building from source. The vast majority of modern Python distributions
 already have these requirements.
+
+Installing from ``pip`` normally installs all necessary dependencies.
 
 The minimum supported version of all dependencies was updated in
 SpacePy 0.5.0. Minimum versions are:

@@ -239,10 +239,16 @@ class ISTPArray:
     .. versionadded:: 0.5.0
 
     .. autosummary::
+        ~ISTPArray.fromQuantity
         ~ISTPArray.plot_as_line
         ~ISTPArray.replace_invalid
+        ~ISTPArray.toQuantity
+        ~ISTPArray.units
+    .. automethod:: fromQuantity
     .. automethod:: plot_as_line
     .. automethod:: replace_invalid
+    .. automethod:: toQuantity
+    .. automethod:: units
     """
     attrs: collections.abc.Mapping
 
@@ -306,6 +312,149 @@ class ISTPArray:
         # Reasonable dividing line is probably 4 stacked line plots
         return self.shape[-1] < 5
 
+    def units(self, fmt='minimal'):
+        """Finds units of array.
+
+        Looks up the unit attribute and performs minor cleanup (including
+        intepreting IDL codes).
+
+        Returns
+        -------
+        `str`
+            Physical units of this array. `None` if not present.
+
+        Parameters
+        ----------
+        fmt : {'minimal', 'latex', 'astropy', 'raw'}
+            How to format the units: ``minimal`` (default) is a
+            minimally-processed rendering, ``latex`` is in LaTeX,
+            ``astropy`` is meant to give good results when passed to
+            `astropy.units.Unit`, and ``raw`` has no processing. No
+            checks are done on processing for AstroPy or LaTeX, and it
+            should not be assumed they will parse.
+
+        Notes
+        -----
+        .. versionadded:: 0.6.0
+        """
+        u = self.attrs.get('UNITS', None)
+        if fmt == 'raw' or u is None:
+            return u
+        if fmt == 'astropy':
+            u = u.replace('#', '1')
+        elif fmt == 'latex':
+            u = u.replace('#', '\\#')
+        if fmt in ('minimal', 'astropy'):
+            u = re.sub(r'![EU]([^!]*)!N', r'^\1', u)  # IDL to exponent
+            u = re.sub(r'\^{([^!]*)}', r'^\1', u)  # LaTeX to exponent
+        if fmt == 'minimal':
+            u = re.sub(r'(?<=\d)(?=[\w^_])', r' ', u)  # Insert spaces
+        if fmt == 'astropy':
+            # Common substitutions
+            for orig, ap in (('ster', 'sr'),
+                             ('cc', 'cm^3'),
+                             ):
+                u = re.sub(fr'((?<=[\W\d])|^){orig}(?=[\W\d]|$)', ap, u)
+        if fmt == 'latex':
+            u = re.sub(r'![EU]([^!]*)!N', r'^{\1}', u)  # IDL to exponent
+        return u
+
+    def toQuantity(self, copy=True):
+        """Convert to Astropy Quantity
+
+        Converts this array to an Astropy `~astropy.units.Quantity`.
+        Invalid values are replaced with `~numpy.nan`.
+
+        Returns
+        -------
+        `~astropy.units.Quantity`
+            Data from this array interpreted according to its ``UNITS``
+            attribute.
+
+        Other Parameters
+        ----------------
+        copy : `bool`, default ``True``
+            Copy data to the Quantity. If ``False``, changes to the
+            Quantity may affect the source array. In some cases a copy
+            may be made even if ``False``.
+
+        Notes
+        -----
+        .. versionadded:: 0.6.0
+
+        Examples
+        --------
+        >>> import spacepy.datamodel
+        # https://rbsp-ect.newmexicoconsortium.org/data_pub/rbspa/ECT/level2/
+        >>> data = spacepy.datamodel.fromCDF(
+        ...     'rbspa_ect-elec-L2_20140115_v2.1.0.cdf')
+        >>> q = data['Position'].toQuantity()
+        >>> q.to('m')
+        <Quantity [[-32833200. , -15531762. ,  -6449212. ],
+                   [-32903586. , -15406271. ,  -6448704.5],
+                   [-32967848. , -15277711. ,  -6446542.5],
+                   ...,
+                   [-20966128. ,   6941849.5,  -2896334.2],
+                   [-21515586. ,   6858618. ,  -3026324. ],
+                   [-22047328. ,   6783260.5,  -3153003.5]] m>
+        """
+        import astropy.units
+        data = self.replace_invalid()  # makes copy
+        if not numpy.isnan(data).any() and not copy:
+            data = self[...]
+        q = astropy.units.Quantity(data, self.units(fmt='astropy'), copy=False)
+        return q
+
+    @classmethod
+    def fromQuantity(cls, q, copy=True):
+        """Convert from Astropy Quantity
+
+        Converts an Astropy `~astropy.units.Quantity` to an ISTP array.
+        `~numpy.nan` are replaced with fill.
+
+        Parameters
+        ----------
+        q : `~astropy.units.Quantity`
+            Quantity to convert
+
+        Returns
+        -------
+        `ISTPArray`
+            Array with attributes which can be inferred from input.
+            This may not be fully ISTP-compliant.
+
+        Other Parameters
+        ----------------
+        copy : `bool`, default ``True``
+            Copy data from the Quantity. If ``False``, changes to the
+            Quantity may affect this array. In some cases a copy
+            may be made even if ``False``.
+
+        Notes
+        -----
+        .. versionadded:: 0.6.0
+        """
+        import astropy.units
+        fill = numpy.isnan(q.value)
+        if fill.any():
+            copy = True
+        data = q.value.copy() if copy else q.value
+        data[fill] = -1e31  # Quantities are always float
+        s = q.unit.si
+        # Force scientific notation, remove superfluous signs and zeros
+        scale = re.sub(r'0*e\+?0*', 'e', f'{s.scale:#e}', count=1)
+        # Unscaled formatter is deprecated, so strip the scale the hard way
+        unscaled = (s / astropy.units.Unit(s.scale)).to_string()
+        # and remove extra spaces around operators
+        unscaled = re.sub(r'\s+([^\w])\s+', r'\1', unscaled)
+        attrs = {
+            'FILLVAL': -1e31,
+            'SI_Conversion': f'{scale}>{unscaled}',
+            'UNITS': q.unit.to_string(),
+        }
+        out = cls(data, attrs)
+        return out
+
 
 class ISTPContainer(collections.abc.Mapping):
     """Mixin class for containers using ISTP metadata.
@@ -318,14 +467,18 @@ class ISTPContainer(collections.abc.Mapping):
     .. versionadded:: 0.5.0
 
     .. autosummary::
+        ~ISTPContainer.fromDataFrame
         ~ISTPContainer.lineplot
         ~ISTPContainer.main_vars
         ~ISTPContainer.plot
         ~ISTPContainer.spectrogram
+        ~ISTPContainer.toDataFrame
+    .. automethod:: fromDataFrame
     .. automethod:: lineplot
     .. automethod:: main_vars
     .. automethod:: plot
     .. automethod:: spectrogram
+    .. automethod:: toDataFrame
     """
     attrs:  collections.abc.Mapping
 
@@ -380,9 +533,9 @@ class ISTPContainer(collections.abc.Mapping):
             else:
                 ax.plot(numpy.array(x), data[:, dim], **plot_kwargs)
         ylabel = v.attrs.get('LABLAXIS', '')
-        if v.attrs.get('UNITS'):
-            ylabel = '{}{}({})'.format(
-                ylabel, ' ' if ylabel else '', v.attrs['UNITS'])
+        u = v.units(fmt='latex')
+        if u.strip():
+            ylabel = '{}{}(${}$)'.format(ylabel, ' ' if ylabel else '', u)
         if ylabel:
             ax.set_ylabel(ylabel)
         if x.attrs.get('LABLAXIS'):
@@ -526,9 +679,10 @@ class ISTPContainer(collections.abc.Mapping):
         x = self[v.attrs['DEPEND_0']]
         y = self[v.attrs['DEPEND_1']]
         zlabel = v.attrs.get('LABLAXIS', '')
-        if v.attrs.get('UNITS'):
-            zlabel = '{}{}({})'.format(
-                zlabel, ' ' if zlabel else '', v.attrs['UNITS'])
+        u = v.units(fmt='latex')
+        if u.strip():
+            zlabel = '{}{}(${}$)'.format(
+                zlabel, ' ' if zlabel else '', u)
         zlabel = zlabel if zlabel else None
         try:  # mpl >=3.7
             cmap = matplotlib.colormaps.get_cmap(None)
@@ -544,9 +698,10 @@ class ISTPContainer(collections.abc.Mapping):
         ax = spacepy.plot.simpleSpectrogram(numpy.array(x), numpy.array(y), data, cbtitle=zlabel,
                                             ax=ax, zero_valid=True, cmap=cmap)
         ylabel = y.attrs.get('LABLAXIS', '')
-        if y.attrs.get('UNITS'):
-            ylabel = '{}{}({})'.format(
-                ylabel, ' ' if ylabel else '', y.attrs['UNITS'])
+        u = y.units(fmt='latex')
+        if u.strip():
+            ylabel = '{}{}(${}$)'.format(
+                ylabel, ' ' if ylabel else '', u)
         if ylabel:
             ax.set_ylabel(ylabel)
         if x.attrs.get('LABLAXIS'):
@@ -592,6 +747,142 @@ class ISTPContainer(collections.abc.Mapping):
         if v.attrs['DELTA_PLUS_VAR'] == v.attrs['DELTA_MINUS_VAR']:
             return(dp,)
         return(self[v.attrs['DELTA_MINUS_VAR']].replace_invalid(), dp)
+
+    def toDataFrame(self, vname=None, copy=True):
+        """Convert to Pandas DataFrame
+
+        Converts one variable (and its dependencies) to a Pandas
+        `~pandas.DataFrame`. Invalid values are replaced with `~numpy.nan`.
+
+        Parameters
+        ----------
+        vname : `str`, optional
+            The key into this container of the value to convert
+            (i.e.,  the name of the variable). Strongly recommended;
+            if not specified, will try to find one using `main_vars`,
+            and raise `ValueError` if there is more than one candidate.
+
+        Returns
+        -------
+        `~pandas.DataFrame`
+            Data from the array named by ``vname`` and its dependencies.
+
+        Other Parameters
+        ----------------
+        copy : `bool`, default ``True``
+            Copy data to the DataFrame. If ``False``, changes to the
+            DataFrame may affect the source data. In some cases a copy
+            may be made even if ``False``.
+
+        Notes
+        -----
+        .. versionadded:: 0.6.0
+
+        Examples
+        --------
+        >>> import spacepy.datamodel
+        # https://rbsp-ect.newmexicoconsortium.org/data_pub/rbspa/ECT/level2/
+        >>> data = spacepy.datamodel.fromCDF(
+        ...     'rbspa_ect-elec-L2_20140115_v2.1.0.cdf')
+        >>> df = data.toDataFrame('Position')
+        >>> df.plot()
+        """
+        import pandas
+        if vname is None:
+            main_vars = self.main_vars()
+            if len(main_vars) != 1:
+                matches = ', '.join(main_vars) if main_vars else 'none'
+                raise ValueError(
+                    f'No variable specified; possible matches: {matches}.')
+            vname = main_vars[0]
+        a = self[vname].attrs
+        data = self[vname].replace_invalid()  # makes copy
+        if not numpy.isnan(data).any() and not copy:
+            data = self[vname][...]
+        if 'LABL_PTR_1' in a:
+            columns = self[a['LABL_PTR_1']][...]
+        else:
+            columns = [a.get('FIELDNAM', vname)]
+            if len(data.shape) > 1:
+                columns *= data.shape[-1]
+        df = pandas.DataFrame(
+            data=data, index=self[a['DEPEND_0']][...],
+            columns=columns, copy=False)
+        return df
+
+    @classmethod
+    def fromDataFrame(cls, df, copy=True):
+        """Convert from Pandas DataFrame
+
+        Converts a Pandas `~pandas.DataFrame` to ISTP-compliant type.
+        `~numpy.nan` are replaced with fill.
+
+        Parameters
+        ----------
+        df : `~pandas.DataFrame`
+            Data frame to convert
+
+        Returns
+        -------
+        `ISTPContainer`
+            ISTP-compliant container representing the dataframe's data.
+            This may not be fully ISTP-compliant; the minimium attributes
+            required to represent the DataFrame are used.
+
+        Other Parameters
+        ----------------
+        copy : `bool`, default ``True``
+            Copy data from the DataFrame. If ``False``, changes to the
+            output may affect the DataFrame. In some cases a copy
+            may be made even if ``False``.
+
+        Notes
+        -----
+        .. versionadded:: 0.6.0
+        """
+        output = cls()
+        # assume can hold a dmarray, a CDF will convert it
+        fill = numpy.isnan(df.values)
+        if fill.any():
+            copy = True
+        data = df.values.copy() if copy else df.values
+        vartype = {
+            'f': 'float',
+            'i': 'int',
+            'U': 'char',
+        }.get(data.dtype.kind, 'float')
+        attrs = createISTPattrs('data', ndims=2, vartype=vartype)
+        attrs.update({
+            'DEPEND_1': 'ColumnNumbers',
+            'DISPLAY_TYPE': 'time_series',
+            'FIELDNAM': 'data',
+            'LABL_PTR_1': 'Labels',
+        })
+        for k in ('CATDESC', 'LABLAXIS', 'SI_CONVERSION', 'UNITS',
+                  'VALIDMIN', 'VALIDMAX'):
+            del attrs[k]
+        output['data'] = dmarray(data, attrs=attrs)
+        output['data'][fill] = -1e31
+        attrs = createISTPattrs('support_data', vartype='tt2000')
+        attrs.update({
+            'FIELDNAM': 'Epoch',
+        })
+        del attrs['CATDESC']
+        output['Epoch'] = dmarray(df.index.to_pydatetime(), attrs=attrs)
+        attrs = createISTPattrs('metadata', vartype='char', NRV=True)
+        attrs.update({
+            'FIELDNAM': 'Labels',
+        })
+        del attrs['CATDESC']
+        output['Labels'] = dmarray(df.columns.values, attrs=attrs, dtype='U')
+        attrs = createISTPattrs('support_data', vartype='int', NRV=True)
+        attrs.update({
+            'FIELDNAM': 'ColumnNumbers',
+        })
+        del attrs['CATDESC']
+        output['ColumnNumbers'] = dmarray(numpy.arange(len(df.columns)),
+                                          attrs=attrs)
+        return output
 
 
 class dmarray(numpy.ndarray, MetaMixin, ISTPArray):
@@ -1314,7 +1605,7 @@ def toCDF(fname, SDobject, skeleton='', flatten=False, overwrite=False,
                             print('{0} is being made NRV'.format(key))
                         v.attrs = dmcopy(val.attrs)
                     except ValueError:
-                        v = outdata.new(key, val.tolist, recVary=False)
+                        v = outdata.new(key, val.tolist(), recVary=False)
                         v.attrs = dmcopy(val.attrs)
                 if force_epoch and 'Epoch' in key:
                     outdata.new(key, val[...], type=pycdf.const.CDF_EPOCH)
@@ -1586,7 +1877,7 @@ def toHDF5(fname, SDobject, **kwargs):
                             dumval[i] = val.isoformat()
                         dumval = dumval.astype('|S35')
                     else:
-                        dumval = dumval.atsype('|S35')
+                        dumval = dumval.astype('|S35')
                     hfile[path].create_dataset(key, data=dumval, compression=comptype,
                                                compression_opts=compopts, dtype=dtype)
                     #else:
