@@ -15,24 +15,8 @@ Copyright 2015 Los Alamos National Security, LLC.
 This module provides a convenient class for handling data from
 AE9/AP9 (and legacy models provided by the software).
 
-.. rubric:: Class
-.. autosummary::
-    :template: clean_class.rst
-    :toctree: autosummary
-
-    Ae9Data
-
 Though the class is derived from SpacePy's SpaceData, the class also provides several methods
 targeted at the AE9/AP9 output. Additional functions for working with the data are provided.
-
-.. rubric:: Functions
-.. autosummary::
-    :template: clean_function.rst
-    :toctree: autosummary
-
-    readFile
-    parseHeader
-
 """
 
 import datetime as dt
@@ -59,20 +43,6 @@ class Ae9Data(dm.SpaceData):
     To inspect the variables within this class, use the tree method.
     To export the data to a CDF, HDF5 or JSON-headed ASCII file use the relevant "to" method
     (toCDF, toHDF5, toJSONheadedASCII).
-
-    .. autosummary::
-
-        ~Ae9Data.getLm
-        ~Ae9Data.plotOrbit
-        ~Ae9Data.plotSummary
-        ~Ae9Data.plotSpectrogram
-        ~Ae9Data.setUnits
-
-    .. automethod:: getLm
-    .. automethod:: plotOrbit
-    .. automethod:: plotSummary
-    .. automethod:: plotSpectrogram
-    .. automethod:: setUnits
     """
 
     def setUnits(self, per=None):
@@ -125,7 +95,7 @@ class Ae9Data(dm.SpaceData):
         cx is the set of coordinates for plotting, ax_target is an axes object"""
         l1 = ax_target.plot(ser1, ser2)
         if np.abs((ax_target.get_xlim()[1] - ax_target.get_xlim()[0])) < 1:
-            refpt = np.abs(np.max(ax_target.get_xlim()))
+            refpt = np.abs((ax_target.get_xlim(), ax_target.get_ylim())).max()
             ax_target.set_xlim([-1.25 * refpt, 1.25 * refpt])
             ax_target.set_ylim(ax_target.get_xlim())
             l1[0].set_marker('o')
@@ -305,7 +275,10 @@ class Ae9Data(dm.SpaceData):
             sd['1D_dataset'] = self[varname][goodidx]
         bins = [[],[]]
         if 'tbins' not in kwargs:
-            bins[0] = spt.tickrange(self[epvar][0], self[epvar][-1], 3/24.).UTC
+            delta = (self[epvar][-1] - self[epvar][0]) / 10.
+            if delta.total_seconds() >= 3600:
+                delta = 3. / 24
+            bins[0] = spt.tickrange(self[epvar][0], self[epvar][-1], delta).UTC
         else:
             bins[0] = kwargs['tbins']
             del kwargs['tbins']
@@ -314,7 +287,7 @@ class Ae9Data(dm.SpaceData):
         else:
             bins[1] = kwargs['Lbins']
             del kwargs['Lbins']
-        spec = splot.spectrogram(sd, variables=['Epoch', 'Lm', '1D_dataset'], ylim=Lm_lim, bins=bins)
+        spec = splot.Spectrogram(sd, variables=['Epoch', 'Lm', '1D_dataset'], ylim=Lm_lim, bins=bins)
 
         if 'zlim' not in kwargs:
             zmax = 10 ** (int(np.log10(max(sd['1D_dataset']))) + 1)
@@ -330,12 +303,9 @@ class Ae9Data(dm.SpaceData):
         if 'title' not in kwargs:
             kwargs['title'] = '{model_type} {varname}: '.format(**self.attrs) + \
                               '{0:5.2f} {1}'.format(self[enname][ecol], self[enname].attrs['UNITS'])
-        reset_shrink = splot.mpl.mathtext.SHRINK_FACTOR
-        splot.mpl.mathtext.SHRINK_FACTOR = 0.85
-        splot.mpl.mathtext.GROW_FACTOR = 1 / 0.85
         ax = spec.plot(cmap='plasma', **kwargs)
-        splot.mpl.mathtext.SHRINK_FACTOR = reset_shrink
-        splot.mpl.mathtext.GROW_FACTOR = 1 / reset_shrink
+        if epvar == 'Epoch':
+            splot.applySmartTimeTicks(ax, self['Epoch'])
         return ax
 
 
@@ -381,7 +351,7 @@ def readFile(fname, comments='#'):
         if header['time_format'] == 'eDOY':  # have to massage the data first
             year = data[:, 0].astype(int)
             frac = data[:, 1]
-            time = spt.Ticktock([dt.datetime(y, 1, 1) + relativedelta.relativedelta(days=v)
+            time = spt.Ticktock([dt.datetime(y, 1, 1) + relativedelta.relativedelta(days = v - 1)
                                  for y, v in zip(year, frac)], 'UTC')
             ans[header['time_format']] = dm.dmarray(data[:, 0:2])
             ans[header['time_format']].attrs['VAR_TYPE'] = 'support_data'
@@ -540,7 +510,7 @@ def _parseInfo(header):
             if match:  # But old has propagator on this line; process and warn
                 warnings.warn(
                     "Support for orbit files from AE9AP9 model <1.5 is deprecated; please update to model 1.5 or later.",
-                    DeprecationWarning)
+                    DeprecationWarning, stacklevel=2)
                 ans['propagator'] = match.group(1).strip()
     return ans
 
@@ -551,10 +521,7 @@ def _readHeader(fname):
     """
     dat = []
     if fname.endswith('.gz'):
-        try:
-            fp = gzip.open(fname, 'rt')
-        except ValueError: #Python 2.7 (Windows) compatibility
-            fp = gzip.open(fname)
+        fp = gzip.open(fname, 'rt')
     else:
         fp = open(fname, 'rt')
     while True:
@@ -643,8 +610,6 @@ def combinePercentiles(files, timeframe='all', verbose=True):
     combine files at different percentiles into one file with the spectra at different
     percentiles for easy plotting and analysis
 
-    NOTE: Requires pandas for any timeframe other than 'all'
-
     Parameters
     ==========
     files : str
@@ -653,7 +618,7 @@ def combinePercentiles(files, timeframe='all', verbose=True):
     Other Parameters
     ================
     timeframe : str
-        Timeframe to average the input spectra over (either 'all' or a pandas understoop resample() time
+        Timeframe to average the input spectra over, must be ``all``.
     verbose : boolean
         Print out information while reading the files
     
@@ -692,15 +657,7 @@ def combinePercentiles(files, timeframe='all', verbose=True):
                 d_comp = np.concatenate((d_comp, data[p][varname]))  # full time collapse
         d_comp = d_comp.reshape(len(ps), -1).T
     else:
-        try:
-            import pandas as pd
-        except ImportError:
-            raise (ImportError("panads is required for timeframe other than 'all'"))
-        raise (NotImplementedError("Timeframes other than 'all' not yet implemented"))
-        # make a dataframe
-        # resample to timeframe
-        # join everything
-        # meet up at same place for output
+        raise NotImplementedError("Timeframes other than 'all' not yet implemented")
     # now that we have all the data prep it to a spacedata
     ans = dm.SpaceData()
     ans[varname] = dm.dmarray(d_comp)
