@@ -1,5 +1,5 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3252523.svg)](https://doi.org/10.5281/zenodo.3252523)
-[![Build Status](https://github.com/spacepy/spacepy/workflows/CI/badge.svg?branch=main)](https://github.com/spacepy/spacepy/actions?query=workflow%3ACI)
+[![Build Status](https://github.com/spacepy/spacepy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/spacepy/spacepy/actions?query=workflow%3ACI)
 
 # SpacePy
 
@@ -31,7 +31,7 @@ The latest "bleeding-edge" source code is available from our github repository a
 
 Further installation documentation, including building from source and OS-specific information, can be found [here](https://spacepy.github.io/install.html). Full documentation is at [https://spacepy.github.io](https://spacepy.github.io).
 
-SpacePy supports Python 3.6 and later.
+SpacePy supports Python 3.7 and later.
 
 ### Dependencies
 

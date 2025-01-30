@@ -39,8 +39,7 @@ Make a clean isolated environment just for SpacePy build:
 ~/miniconda/bin/conda create -y -n spacepy_build python=3
 source ~/miniconda/bin/activate spacepy_build
 conda install -y pip python-build wheel
-conda install -y numpy
-conda install -y scipy matplotlib h5py astropy sphinx numpydoc
+conda install -y numpy scipy matplotlib h5py astropy sphinx numpydoc
 
 (Use "conda deactivate" when done, but not done yet...))
 
@@ -101,24 +100,15 @@ Download latest 64-bit Miniconda from
 https://docs.conda.io/en/latest/miniconda.html and put it in the
 user-default download directory (%USERPROFILE%\Downloads)
 
-MSVC needs to be installed from
-https://visualstudio.microsoft.com/visual-cpp-build-tools/ before
-making the Python 3.12 environment, and should be uninstalled
-after. This can be done before building the entire Windows build
-system (following) or by separating out the 3.12 work.
-
 Run the rest of the process in a command prompt with administrator
 access so that Miniconda can be installed to a reasonable location--if
 it is installed to the user's directory, there's often a space there,
 and that confuses f2py.
 
-Set up conda environments for the build by running
-"win_build_system_setup.cmd build". This will make conda environments
-and install the earliest supported version of numpy in each. Then run
-build_win.cmd to make Windows binaries and wheels, and
-win_build_system_teardown.cmd to remove those environment (and
-miniconda). Windows binaries and wheels will be in the "dist"
-directory of the SpacePy distribution.
+Run build_win.cmd to make the Windows binaries and wheel, and
+win_build_system_teardown.cmd to remove the build environment (and
+miniconda). The Windows wheel will be in the "dist" directory of the
+SpacePy distribution.
 
 There may be a console error "This application has requested the
 Runtime to terminate it in an unusual way" with a popup "python.exe
@@ -173,6 +163,16 @@ docker run -i -t --rm -v `pwd`:/io quay.io/pypa/manylinux2014_x86_64 /bin/bash /
 
 Need to change owner of the wheels after they're copied out, in the future can try running docker with --user $(id -u):$(id -g) but then will need to work with write permissions for the pip installs inside the container.
 
+To build for ARM (Raspberry Pi):
+sudo aptitude install binfmt-support qemu-user-static
+docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+docker run -i -t --rm -v `pwd`:/io --platform linux/arm64 quay.io/pypa/manylinux2014_aarch64 /bin/bash /io/developer/scripts/manylinux_wheels.sh
+
+See:
+https://www.stereolabs.com/docs/docker/building-arm-container-on-x86
+https://stackoverflow.com/questions/70872114/x86-docker-image-on-arm
+https://github.com/pypa/manylinux/
+
 Fixing wheel metadata version
 -----------------------------
 
@@ -190,37 +190,6 @@ General notes on binaries
 It looks like the wheels are compatible across Windows versions,
 i.e. a wheel built on Windows 10 seems to install okay in Windows 7,
 which is great.
-
-Using the oldest supported numpy for the build is used for ABI
-compatibility for the f2py-built extensions (irbem mostly). See
-https://github.com/numpy/numpy/issues/5888. It looks like there isn't
-a way to specify the ABI version in f2py so the only answer is to
-compile with an old-enough numpy. In particular there's a note "SciPy
-pins its build system to the oldest numpy it wishes to support".
-
-ABI is in numpy/core/setup_common.py and there's no history, so going
-through the git tags for each numpy release gives:
-
-1.4 through current main : 0x01000009
-
-It looks like ABI version is a complete break: if it changes, old
-modules will no longer work. However, the API version is backward
-compatible: any version with a particular API version can be used on
-anything with the same API version (even older numpy versions) or
-newer, provided ABI version is the same. There's a list in
-numpyconfig.h but it disagrees with the history given in
-setup_common.py; they are probably used for slightly different
-purposes. History going through commits of setup_common.py is:
-
-1.10.0, 1.11.0, 1.12.0: 0x0000000a
-1.13.0: 0x0000000b
-1.14.0, 1.15.0: 0x0000000c
-1.16.0, 1.17.0, 1.18.0, 1.19.0: 0x0000000d
-1.20.0, 1.21.0: 0x0000000e
-
-The list in the latest setup_common.py is incomplete (it seems to
-imply that gaps are filled with the same value.)
-
 
 Docs
 ----

@@ -171,8 +171,8 @@ def viz_egrid(nE=36, lb=0.1, ew=3E-2, power=1.27):
 
 def gen_pgrid(nPa=72):
     '''
-    Given number of points, *nPa*, build the RAM-SCB pitch angle grid.
-    The return value is a *nPa*x3 matrix containing the bin starts, centers,
+    Given number of points, $*nPa*$, build the RAM-SCB pitch angle grid.
+    The return value is a $*nPa*x3$ matrix containing the bin starts, centers,
     and ends in cosine of pitch angle.
     '''
     pgrid = np.zeros((nPa, 3))
@@ -464,12 +464,9 @@ class EfieldFile(PbData):
                     add_cbar=True, labcolor='lightgray', title='Noon'):
         '''
         Quickly add a potential plot to MPL object *target*.
-
+        
         Parameters
         ==========
-
-        Other Parameters
-        ================
         target : object
            The object on which plotting will happen.
         figsize : tuple
@@ -512,7 +509,7 @@ class EfieldFile(PbData):
 
 class WeqFile(EfieldFile):
     '''
-    Slight variation on :class:`weimer` to read weq_***.in files.
+    Slight variation on the weimer class to read weq_***.in files.
     '''
     def _parse_head(self, headlines):
         parts = headlines.split()
@@ -1278,16 +1275,6 @@ class PressureFile(PbData):
 
         Parameters
         ==========
-
-        Returns
-        =======
-        fig : matplotlib figure object
-        ax  : matplotlib axes object
-        cont : matplotlib contour object
-        cbar : matplotlib colorbar object
-
-        Other Parameters
-        ================
         var : string
              The variable within the object to plot.  Defaults to 'total'.
              Can be set to other species-specific pressure values.
@@ -1318,6 +1305,13 @@ class PressureFile(PbData):
             Use to specify the subplot placement of the axis
             (e.g. loc=212, etc.) Used if target is a Figure or None.
             Default 111 (single plot).
+
+        Returns
+        =======
+        fig : matplotlib figure object
+        ax  : matplotlib axes object
+        cont : matplotlib contour object
+        cbar : matplotlib colorbar object
 
         '''
         from matplotlib.colors import LogNorm
@@ -1356,16 +1350,6 @@ class PressureFile(PbData):
 
         Parameters
         ==========
-
-        Returns
-        =======
-        fig : matplotlib figure object
-        ax  : matplotlib axes object
-        cont : matplotlib contour object
-        cbar : matplotlib colorbar object
-
-        Other Parameters
-        ================
         var : string
              The variable within the object to plot.  Defaults to 'total'.
              Can be set to other species-specific pressure values.
@@ -1389,6 +1373,13 @@ class PressureFile(PbData):
             Use to specify the subplot placement of the axis
             (e.g. loc=212, etc.) Used if target is a Figure or None.
             Default 111 (single plot).
+        
+        Returns
+        =======
+        fig : matplotlib figure object
+        ax  : matplotlib axes object
+        cont : matplotlib contour object
+        cbar : matplotlib colorbar object
 
         '''
         from matplotlib.colors import LogNorm
@@ -1425,8 +1416,8 @@ class PressureFile(PbData):
 
 class BoundaryFluxFile(object):
     '''
-    Read, plot, and edit flux (*.swf) or (*.dat) files.
-    *.dat files are output into the Dsbnd directory.
+    Read, plot, and edit flux $([filename].swf)$ or $([filename].dat)$ files.
+    $([filename].dat)$ files are output into the Dsbnd directory.
     '''
     def __init__(self, filename):
         self.filename = filename
@@ -1609,14 +1600,6 @@ class LogFile(PbData):
 
         Parameters
         ==========
-
-        Returns
-        =======
-        fig : matplotlib figure object
-        ax  : matplotlib axes object
-
-        Other Parameters
-        ================
         target : Figure or Axes
              If None (default), a new figure is generated from scratch.
              If a matplotlib Figure object, a new axis is created
@@ -1632,7 +1615,10 @@ class LogFile(PbData):
         showBiot : bool
             Show Biot-Savart Dst?  Defaults to **True**
 
-
+        Returns
+        =======
+        fig : matplotlib figure object
+        ax  : matplotlib axes object
         '''
         fig, ax = set_target(target, loc=loc)
 
@@ -1732,6 +1718,7 @@ class IonoPotScb(PbData):
         target may be a matplotlib figure or axis or None.  If target
         is a figure, a new subplot is created.  If target is None, a
         new figure AND axis is created.
+
         Parameters
         ==========
         time : int
